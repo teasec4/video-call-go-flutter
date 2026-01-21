@@ -27,8 +27,8 @@ func main() {
 
 	http.HandleFunc("/ws", handleWebSocket)
 
-	fmt.Println("Server starting on :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	fmt.Println("Server starting on 0.0.0.0:8081")
+	log.Fatal(http.ListenAndServe("0.0.0.0:8081", nil))
 }
 
 func handleWebSocket(w http.ResponseWriter, r *http.Request) {

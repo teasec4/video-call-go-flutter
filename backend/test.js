@@ -1,7 +1,7 @@
 const WebSocket = require("ws")
 
 const id = process.argv[2] || "anon";
-const ws = new WebSocket("ws://localhost:8080/ws")
+const ws = new WebSocket("ws://localhost:8081/ws")
 
 ws.on("open", () => {
   console.log(`[${id}] connected`);

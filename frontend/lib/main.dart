@@ -49,6 +49,7 @@ class _MyHomePageState extends State<MyHomePage> {
   String _connectedPeerId = '';
   List<String> _availablePeers = [];
   bool _isCallActive = false;
+  bool _isMicrophoneEnabled = true;
 
   // Buffer for ICE candidates that arrive before remote description is set
   List<RTCIceCandidate> _iceCandidateBuffer = [];
@@ -167,7 +168,6 @@ class _MyHomePageState extends State<MyHomePage> {
 
   void _handleMessage(dynamic data) {
     try {
-      print('Raw data type: ${data.runtimeType}');
       print('Raw data: $data');
       final msg = jsonDecode(data);
       print('======= MESSAGE RECEIVED =======');
@@ -491,6 +491,23 @@ class _MyHomePageState extends State<MyHomePage> {
     _listPeers();
   }
 
+  void _toggleMicrophone() {
+    if (_localStream == null) return;
+
+    final audioTracks = _localStream!.getAudioTracks();
+    for (var track in audioTracks) {
+      track.enabled = !track.enabled;
+    }
+
+    setState(() {
+      _isMicrophoneEnabled = !_isMicrophoneEnabled;
+    });
+
+    _addMessage(
+      'Microphone ${_isMicrophoneEnabled ? 'enabled' : 'disabled'}',
+    );
+  }
+
   void _addMessage(String msg) {
     setState(() {
       messages.add(msg);
@@ -638,11 +655,23 @@ class _MyHomePageState extends State<MyHomePage> {
                         icon: const Icon(Icons.send),
                         onPressed: sendMessage,
                       ),
-                      if (_isCallActive)
+                      if (_isCallActive) ...[
+                        IconButton(
+                          icon: Icon(
+                            _isMicrophoneEnabled
+                                ? Icons.mic
+                                : Icons.mic_off,
+                            color: _isMicrophoneEnabled
+                                ? Colors.blue
+                                : Colors.red,
+                          ),
+                          onPressed: _toggleMicrophone,
+                        ),
                         IconButton(
                           icon: const Icon(Icons.call_end, color: Colors.red),
                           onPressed: _endCall,
                         ),
+                      ],
                     ],
                   ),
                 ),

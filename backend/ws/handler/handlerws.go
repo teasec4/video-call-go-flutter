@@ -37,10 +37,11 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 	
 	// new client
 	client := client.NewClient(conn)
-	log.Println("Client connected:", client.Id, "\nTotal clients:", len(h.ClientManager.List()))
 	 
 	// add client to list of client
 	h.ClientManager.Add(client)
+	
+	log.Println("Client connected:", client.Id, "\nTotal clients:", len(h.ClientManager.List()))
 	 
 	// send client back their id
 	h.ClientManager.SendClientTheirId(client)
@@ -79,8 +80,30 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 			case "list-peers":
 				h.ClientManager.SendPeerList(client)
 			case "offer", "answer", "ice-candidate":
-				// send to peer message func
-				log.Println("test")
+				if msg.To == "" {
+					log.Println("ERROR: No 'to' field in", msg.Type)
+					continue
+				}
+				
+				peer := h.ClientManager.Get(msg.To)
+				if peer == nil {
+					log.Println("Peer not found:", msg.To)
+					continue
+				}
+				
+				response := map[string]interface{}{
+					"type":    msg.Type,
+					"from":    client.Id,
+					"payload": msg.Payload,
+				}
+				respBytes, _ := json.Marshal(response)
+				
+				err := peer.Conn.WriteMessage(websocket.TextMessage, respBytes)
+				if err != nil {
+					log.Println("Failed to send message to peer:", err)
+				} else {
+					log.Println("Successfully sent", msg.Type, "to peer:", msg.To[:8])
+				}
 		}
 	}
 }

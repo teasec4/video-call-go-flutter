@@ -1,4 +1,3 @@
-
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -50,7 +49,7 @@ class _MyHomePageState extends State<MyHomePage> {
   List<String> _availablePeers = [];
   bool _isCallActive = false;
   bool _isMicrophoneEnabled = true;
-  final List<String> messages = [];
+  final List<SignalingMessage> messages = [];
   final TextEditingController controller = TextEditingController();
 
   @override
@@ -168,8 +167,11 @@ class _MyHomePageState extends State<MyHomePage> {
         break;
 
       case 'chat':
-        _addMessage('${msg.from!.substring(0, 8)}: ${msg.payload}');
-        break;
+        // make up chat logic
+        setState(() {
+          messages.add(msg);
+        });
+          break;
     }
   }
 
@@ -178,9 +180,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void _listPeers() {
-    signalingService.sendMessage(
-      SignalingMessage(type: 'list-peers'),
-    );
+    signalingService.sendMessage(SignalingMessage(type: 'list-peers'));
   }
 
   void _callPeer(String peerId) async {
@@ -198,10 +198,7 @@ class _MyHomePageState extends State<MyHomePage> {
       await webrtcService.initPeerConnection(
         (description) {
           // Send local description to peer
-          final payload = {
-            'type': description.type,
-            'sdp': description.sdp,
-          };
+          final payload = {'type': description.type, 'sdp': description.sdp};
 
           signalingService.sendMessage(
             SignalingMessage(
@@ -233,17 +230,10 @@ class _MyHomePageState extends State<MyHomePage> {
 
       final offer = await webrtcService.createOffer();
 
-      final payload = {
-        'type': offer.type,
-        'sdp': offer.sdp,
-      };
+      final payload = {'type': offer.type, 'sdp': offer.sdp};
 
       signalingService.sendMessage(
-        SignalingMessage(
-          type: 'offer',
-          to: peerId,
-          payload: payload,
-        ),
+        SignalingMessage(type: 'offer', to: peerId, payload: payload),
       );
 
       setState(() {
@@ -276,10 +266,7 @@ class _MyHomePageState extends State<MyHomePage> {
     try {
       await webrtcService.initPeerConnection(
         (description) {
-          final payload = {
-            'type': description.type,
-            'sdp': description.sdp,
-          };
+          final payload = {'type': description.type, 'sdp': description.sdp};
 
           signalingService.sendMessage(
             SignalingMessage(
@@ -315,10 +302,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
       final answer = await webrtcService.createAnswer();
 
-      final answerPayload = {
-        'type': answer.type,
-        'sdp': answer.sdp,
-      };
+      final answerPayload = {'type': answer.type, 'sdp': answer.sdp};
 
       signalingService.sendMessage(
         SignalingMessage(
@@ -384,25 +368,18 @@ class _MyHomePageState extends State<MyHomePage> {
       _isMicrophoneEnabled = !_isMicrophoneEnabled;
     });
 
-    _addMessage(
-      'Microphone ${_isMicrophoneEnabled ? 'enabled' : 'disabled'}',
-    );
+    _addMessage('Microphone ${_isMicrophoneEnabled ? 'enabled' : 'disabled'}');
   }
 
   void _addMessage(String msg) {
-    setState(() {
-      messages.add(msg);
-    });
+    print(msg);
   }
 
   void sendMessage() {
     if (controller.text.isEmpty) return;
 
     signalingService.sendMessage(
-      SignalingMessage(
-        type: 'chat',
-        payload: controller.text,
-      ),
+      SignalingMessage(type: 'chat', payload: controller.text),
     );
 
     controller.clear();
@@ -432,6 +409,7 @@ class _MyHomePageState extends State<MyHomePage> {
       onCallPeer: _callPeer,
       onToggleMicrophone: _toggleMicrophone,
       onEndCall: _endCall,
+      myId: _clientId,
     );
   }
 }

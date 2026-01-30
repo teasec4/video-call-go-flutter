@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-class MessageInput extends StatelessWidget {
+class MessageInput extends StatefulWidget {
   final TextEditingController controller;
   final VoidCallback onSendMessage;
 
@@ -11,6 +11,30 @@ class MessageInput extends StatelessWidget {
   });
 
   @override
+  State<MessageInput> createState() => _MessageInputState();
+}
+
+class _MessageInputState extends State<MessageInput> {
+  late FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = FocusNode();
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _handleSend() {
+    widget.onSendMessage();
+    _focusNode.requestFocus();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(8.0),
@@ -18,16 +42,18 @@ class MessageInput extends StatelessWidget {
         children: [
           Expanded(
             child: TextField(
-              controller: controller,
+              controller: widget.controller,
+              focusNode: _focusNode,
               decoration: const InputDecoration(
                 hintText: 'Enter message...',
                 border: OutlineInputBorder(),
               ),
+              onSubmitted: (_) => _handleSend(),
             ),
           ),
           IconButton(
             icon: const Icon(Icons.send),
-            onPressed: onSendMessage,
+            onPressed: _handleSend,
           ),
         ],
       ),

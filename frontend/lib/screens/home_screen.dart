@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:frontend/models/message_model.dart';
 import '../widgets/video_area.dart';
 import '../widgets/peer_list.dart';
 import '../widgets/chat_area.dart';
@@ -13,9 +14,10 @@ class HomeScreen extends StatelessWidget {
   final bool isCallActive;
   final bool isMicrophoneEnabled;
   final List<String> availablePeers;
-  final List<String> messages;
+  final List<SignalingMessage> messages;
   final TextEditingController messageController;
-  
+  final String myId;
+
   final VoidCallback onSendMessage;
   final Function(String peerId) onCallPeer;
   final VoidCallback onToggleMicrophone;
@@ -35,6 +37,7 @@ class HomeScreen extends StatelessWidget {
     required this.onCallPeer,
     required this.onToggleMicrophone,
     required this.onEndCall,
+    required this.myId,
   });
 
   @override
@@ -69,6 +72,7 @@ class HomeScreen extends StatelessWidget {
                   messages: messages,
                   messageController: messageController,
                   onSendMessage: onSendMessage,
+                  myId: myId,
                 ),
                 // Input and controls
                 MessageInput(

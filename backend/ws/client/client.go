@@ -59,9 +59,9 @@ func (m *ClientManager) NotifyPeer(newPeer *Client, isJoin bool) {
 		msgType = "peer-joined"
 	}
 
-	notification := map[string]string{
+	notification := map[string]interface{}{
 		"type": msgType,
-		"id":   newPeer.Id,
+		"payload": map[string]string{"id": newPeer.Id},
 	}
 	notifyBytes, err := json.Marshal(notification)
 	if err != nil {
@@ -78,7 +78,10 @@ func (m *ClientManager) NotifyPeer(newPeer *Client, isJoin bool) {
 }
 
 func (m *ClientManager) SendClientTheirId(client *Client) {
-	msg := map[string]string{"type": "client-id", "id": client.Id}
+	msg := map[string]interface{}{
+		"type":    "client-id",
+		"payload": map[string]string{"id": client.Id},
+	}
 	msgBytes, err := json.Marshal(msg)
 	if err != nil {
 		log.Println("Failed to marshal client-id:", err)

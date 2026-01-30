@@ -8,21 +8,43 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"sync"
 
 	"github.com/gorilla/websocket"
 )
+
+type messageStore struct {
+	mu       sync.RWMutex
+	messages []*types.Message
+}
+
+func (ms *messageStore) SaveMessage(msg *types.Message) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	ms.messages = append(ms.messages, msg)
+}
+
+func (ms *messageStore) GetAllMessages() []*types.Message {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	result := make([]*types.Message, len(ms.messages))
+	copy(result, ms.messages)
+	return result
+}
 
 type HandlerWebSocket struct {
 	Upgrader       websocket.Upgrader
 	ClientManager  *client.ClientManager
 	Broadcast      chan []byte
+	messageStore   *messageStore
 }
 
 func NewHandlerFromConfig(config *config.Config, clientManager *client.ClientManager) *HandlerWebSocket {
 	return &HandlerWebSocket{
-		Upgrader:      config.Upgrader,
-		ClientManager: clientManager,
-		Broadcast:     config.Broadcast,
+		Upgrader:       config.Upgrader,
+		ClientManager:  clientManager,
+		Broadcast:      config.Broadcast,
+		messageStore:   &messageStore{},
 	}
 }
 
@@ -36,18 +58,13 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 	}
 	defer conn.Close()
 
-	// new client
 	newClient := client.NewClient(conn)
-
-	// add client to list of clients
 	h.ClientManager.Add(newClient)
 
 	log.Println("Client connected:", newClient.Id, "\nTotal clients:", len(h.ClientManager.List()))
 
-	// send client back their id
 	h.ClientManager.SendClientTheirId(newClient)
-
-	// notify every peer, second is true if joined and false if left
+	h.sendChatHistory(newClient)
 	h.ClientManager.NotifyPeer(newClient, true)
 
 	defer func() {
@@ -70,7 +87,6 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 
 		msg.From = newClient.Id
 
-		// Validate message
 		if err := msg.Validate(); err != nil {
 			log.Println("Validation error:", err)
 			continue
@@ -78,19 +94,17 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 
 		switch msg.Type {
 		case "chat":
-			chatMsg := map[string]interface{}{
-				"type":    "chat",
-				"from":    newClient.Id,
-				"payload": msg.Payload,
-			}
-			chatBytes, err := json.Marshal(chatMsg)
+			h.messageStore.SaveMessage(&msg)
+			chatBytes, err := h.marshalChatMessage(msg.From, msg.Payload)
 			if err != nil {
 				log.Println("Failed to marshal chat message:", err)
 				continue
 			}
 			h.Broadcast <- chatBytes
+
 		case "list-peers":
 			h.ClientManager.SendPeerList(newClient)
+
 		case "offer", "answer", "ice-candidate":
 			if msg.To == "" {
 				log.Println("ERROR: No 'to' field in", msg.Type)
@@ -124,6 +138,28 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+func (h *HandlerWebSocket) marshalChatMessage(from string, payload json.RawMessage) ([]byte, error) {
+	return json.Marshal(map[string]interface{}{
+		"type":    "chat",
+		"from":    from,
+		"payload": payload,
+	})
+}
+
+func (h *HandlerWebSocket) sendChatHistory(client *client.Client) {
+	for _, msg := range h.messageStore.GetAllMessages() {
+		msgBytes, err := h.marshalChatMessage(msg.From, msg.Payload)
+		if err != nil {
+			log.Println("Failed to marshal history message:", err)
+			continue
+		}
+		if err := client.Conn.WriteMessage(websocket.TextMessage, msgBytes); err != nil {
+			log.Println("Failed to send history to client:", err)
+			return
+		}
+	}
+}
+
 func (h *HandlerWebSocket) StartBroadcaster(ctx context.Context) {
 	go func() {
 		for {
@@ -133,8 +169,7 @@ func (h *HandlerWebSocket) StartBroadcaster(ctx context.Context) {
 				return
 			case msg := <-h.Broadcast:
 				for _, c := range h.ClientManager.List() {
-					err := c.Conn.WriteMessage(websocket.TextMessage, msg)
-					if err != nil {
+					if err := c.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 						log.Println("Broadcast error:", err)
 					}
 				}

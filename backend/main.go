@@ -16,15 +16,20 @@ import (
 
 func main() {
 	cfg := config.ConfigInit()
+
+	// client manager
 	cm := client.NewClientManager()
 	h := handler.NewHandlerFromConfig(cfg, cm)
-
+	
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	h.StartBroadcaster(ctx)
 
 	http.HandleFunc("/ws", h.HandleConnection)
+	http.HandleFunc("/api/messages", func(w http.ResponseWriter, r *http.Request) {
+		
+	})
 
 	server := &http.Server{
 		Addr: "0.0.0.0:8081",

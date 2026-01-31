@@ -45,25 +45,55 @@ class _ChatAreaState extends State<ChatArea> {
     });
 
     return Expanded(
-      child: ListView.builder(
-        controller: _scrollController,
-        itemCount: widget.messages.length,
-        itemBuilder: (context, index) {
-          final msg = widget.messages[index];
-          final isOwn = widget.myId == msg.from;
-          return Align(
-            alignment: isOwn ? Alignment.centerRight : Alignment.centerLeft,
-            child: Container(
-              margin: const EdgeInsets.all(8),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isOwn ? Colors.blue[300] : Colors.grey[300],
-                borderRadius: BorderRadius.circular(12),
+      child: Container(
+        color: Colors.grey[900],
+        child: widget.messages.isEmpty
+            ? Center(
+                child: Text(
+                  'No messages yet',
+                  style: TextStyle(color: Colors.grey[500]),
+                ),
+              )
+            : ListView.builder(
+                controller: _scrollController,
+                itemCount: widget.messages.length,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                itemBuilder: (context, index) {
+                  final msg = widget.messages[index];
+                  final isOwn = widget.myId == msg.from;
+                  return Align(
+                    alignment:
+                        isOwn ? Alignment.centerRight : Alignment.centerLeft,
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isOwn ? Colors.blue[600] : Colors.grey[700],
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        msg.payload.toString(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
-              child: Text(msg.payload.toString()),
-            ),
-          );
-        },
       ),
     );
   }

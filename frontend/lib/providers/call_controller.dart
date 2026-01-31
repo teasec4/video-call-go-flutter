@@ -18,7 +18,7 @@ class CallController extends StateNotifier<CallState> {
 
   final String _wsUrl = kIsWeb
       ? 'ws://localhost:8081/ws'
-      : 'wss://2221b5c37f6b.ngrok-free.app/ws';
+      : 'ws://localhost:8081/ws';
   
   bool _initialized = false;
 
@@ -321,8 +321,6 @@ class CallController extends StateNotifier<CallState> {
       SignalingMessage(type: 'chat', payload: text),
     );
   }
-
-
 
   @override
   void dispose() {

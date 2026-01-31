@@ -17,7 +17,24 @@ class MyApp extends StatelessWidget {
       child: MaterialApp(
         title: 'Video Call',
         theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.grey),
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: Colors.blue,
+            brightness: Brightness.light,
+          ),
+          useMaterial3: true,
+          appBarTheme: AppBarTheme(
+            backgroundColor: Colors.grey[900],
+            foregroundColor: Colors.white,
+            elevation: 0,
+          ),
+          scaffoldBackgroundColor: Colors.white,
+          inputDecorationTheme: InputDecorationTheme(
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
+            filled: true,
+            fillColor: Colors.white,
+          ),
         ),
         home: const MyHomePage(),
       ),

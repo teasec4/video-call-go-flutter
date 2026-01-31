@@ -18,15 +18,22 @@ class PeerList extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    return Padding(
-      padding: const EdgeInsets.all(8.0),
+    return Container(
+      color: Colors.grey[900],
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Available Peers:',
-            style: TextStyle(fontWeight: FontWeight.bold),
+          Text(
+            'Available Peers (${peers.length})',
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+              fontSize: 13,
+            ),
           ),
+          const SizedBox(height: 8),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -35,8 +42,22 @@ class PeerList extends StatelessWidget {
                     (peerId) => Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4.0),
                       child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue[600],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                        ),
                         onPressed: () => onCallPeer(peerId),
-                        child: Text(peerId.substring(0, 8)),
+                        child: Text(
+                          peerId.substring(0, 8),
+                          style: const TextStyle(fontSize: 12),
+                        ),
                       ),
                     ),
                   )

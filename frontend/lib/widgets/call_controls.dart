@@ -21,17 +21,39 @@ class CallControls extends StatelessWidget {
     }
 
     return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        IconButton(
-          icon: Icon(
-            isMicrophoneEnabled ? Icons.mic : Icons.mic_off,
-            color: isMicrophoneEnabled ? Colors.blue : Colors.red,
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.grey[700],
+            borderRadius: BorderRadius.circular(24),
           ),
-          onPressed: onToggleMicrophone,
+          child: IconButton(
+            icon: Icon(
+              isMicrophoneEnabled ? Icons.mic : Icons.mic_off,
+              color: isMicrophoneEnabled ? Colors.blue[300] : Colors.red,
+            ),
+            onPressed: onToggleMicrophone,
+            tooltip: isMicrophoneEnabled ? 'Mute' : 'Unmute',
+          ),
         ),
-        IconButton(
-          icon: const Icon(Icons.call_end, color: Colors.red),
-          onPressed: onEndCall,
+        const SizedBox(width: 12),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.red.shade600,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.red.withOpacity(0.3),
+                blurRadius: 8,
+              ),
+            ],
+          ),
+          child: IconButton(
+            icon: const Icon(Icons.call_end, color: Colors.white),
+            onPressed: onEndCall,
+            tooltip: 'End Call',
+          ),
         ),
       ],
     );

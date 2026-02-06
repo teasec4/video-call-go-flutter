@@ -91,11 +91,33 @@ func (mb *MessageBuilder) BuildPeerNotificationResponse(msgType, peerID string, 
 }
 
 // BuildSignalingResponse создает signaling response (offer/answer/ice-candidate)
+// Структура: { type: "offer/answer/ice-candidate", from: "ID", payload: {...} }
 func (mb *MessageBuilder) BuildSignalingResponse(msgType, fromID string, payload json.RawMessage) []byte {
-	return mb.BuildResponse(msgType, map[string]interface{}{
-		"from":    fromID,
-		"payload": payload,
-	})
+	// Распарсим payload чтобы развернуть его на верхнем уровне
+	var payloadObj map[string]interface{}
+	if err := json.Unmarshal(payload, &payloadObj); err != nil {
+		mb.logger.Println("Failed to unmarshal payload:", err)
+		return nil
+	}
+
+	// Создаём правильную структуру с from на верхнем уровне
+	response := map[string]interface{}{
+		"type": msgType,
+		"from": fromID,
+	}
+	
+	// Добавляем все поля из payload на верхний уровень
+	for k, v := range payloadObj {
+		response[k] = v
+	}
+
+	bytes, err := json.Marshal(response)
+	if err != nil {
+		mb.logger.Println("Failed to marshal signaling response:", err)
+		return nil
+	}
+
+	return bytes
 }
 
 // BuildClientIdResponse создает client-id response

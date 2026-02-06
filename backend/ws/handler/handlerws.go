@@ -240,16 +240,27 @@ func (h *HandlerWebSocket) handleCreateRoom(client *client.Client) {
 
 // handleJoinRoom присоединяет клиента к комнате
 func (h *HandlerWebSocket) handleJoinRoom(client *client.Client, payload json.RawMessage) {
-	var data map[string]string
+	log.Println("DEBUG: Received join-room payload:", string(payload))
+	
+	var data map[string]interface{}
 	if err := json.Unmarshal(payload, &data); err != nil {
 		log.Println("Failed to unmarshal join-room payload:", err)
 		h.msgSender.SendToClient(client.Conn, h.msgBuilder.BuildErrorResponse(config.ErrInvalidPayload))
 		return
 	}
 
-	roomID, ok := data["roomId"]
+	log.Println("DEBUG: Parsed payload data:", data)
+	
+	roomIDVal, ok := data["roomId"]
 	if !ok {
-		log.Println("No roomId in join-room payload")
+		log.Println("No roomId in join-room payload, available keys:", data)
+		h.msgSender.SendToClient(client.Conn, h.msgBuilder.BuildErrorResponse(config.ErrInvalidPayload))
+		return
+	}
+	
+	roomID, ok := roomIDVal.(string)
+	if !ok {
+		log.Println("roomId is not a string:", roomIDVal)
 		h.msgSender.SendToClient(client.Conn, h.msgBuilder.BuildErrorResponse(config.ErrInvalidPayload))
 		return
 	}

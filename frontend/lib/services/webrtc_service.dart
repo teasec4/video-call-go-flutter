@@ -5,6 +5,10 @@ class WebrtcService {
   late RTCVideoRenderer remoteRenderer;
   RTCPeerConnection? _peerConnection;
   final List<RTCIceCandidate> _iceCandidateBuffer = [];
+  
+  // Callbacks for signaling
+  Function(RTCSessionDescription)? _onLocalDescription;
+  Function(RTCIceCandidate)? _onIceCandidate;
 
   WebrtcService() {
     localRenderer = RTCVideoRenderer();
@@ -40,6 +44,10 @@ class WebrtcService {
         {'mandatory': {}, 'optional': []},
       );
 
+      // Store callbacks for later use
+      _onLocalDescription = onLocalDescription;
+      _onIceCandidate = onIceCandidate;
+
       // Handle both legacy onAddStream and modern onTrack
       _peerConnection!.onAddStream = (stream) {
         print('Legacy: Remote stream received');
@@ -60,6 +68,11 @@ class WebrtcService {
         onIceCandidate(candidate);
       };
 
+      // Handle connection state changes
+      _peerConnection!.onConnectionState = (state) {
+        print('Connection state changed: $state');
+      };
+
       print('Peer connection created');
     } catch (e) {
       print('Failed to create peer connection: $e');
@@ -71,7 +84,9 @@ class WebrtcService {
     try {
       final offer = await _peerConnection!.createOffer();
       await _peerConnection!.setLocalDescription(offer);
-      print('Offer created');
+      print('Offer created and set as local description');
+      // Notify callback
+      _onLocalDescription?.call(offer);
       return offer;
     } catch (e) {
       print('Failed to create offer: $e');
@@ -83,7 +98,9 @@ class WebrtcService {
     try {
       final answer = await _peerConnection!.createAnswer();
       await _peerConnection!.setLocalDescription(answer);
-      print('Answer created');
+      print('Answer created and set as local description');
+      // Notify callback
+      _onLocalDescription?.call(answer);
       return answer;
     } catch (e) {
       print('Failed to create answer: $e');
@@ -150,23 +167,30 @@ class WebrtcService {
         throw Exception('Peer connection not initialized');
       }
 
+      print('📊 Adding stream with id: ${stream.id}');
+      print('📊 Total tracks in stream: ${stream.getTracks().length}');
+
       // Add audio tracks
       final audioTracks = stream.getAudioTracks();
+      print('📊 Audio tracks: ${audioTracks.length}');
       for (final track in audioTracks) {
-        await _peerConnection!.addTrack(track, stream);
-        print('Audio track added: ${track.id}');
+        print('  → Adding audio track: id=${track.id}, enabled=${track.enabled}, kind=${track.kind}');
+        final sender = await _peerConnection!.addTrack(track, stream);
+        print('  ✅ Audio track added, sender=$sender');
       }
 
       // Add video tracks
       final videoTracks = stream.getVideoTracks();
+      print('📊 Video tracks: ${videoTracks.length}');
       for (final track in videoTracks) {
-        await _peerConnection!.addTrack(track, stream);
-        print('Video track added: ${track.id}');
+        print('  → Adding video track: id=${track.id}, enabled=${track.enabled}, kind=${track.kind}');
+        final sender = await _peerConnection!.addTrack(track, stream);
+        print('  ✅ Video track added, sender=$sender');
       }
 
-      print('All streams added to peer connection (${audioTracks.length} audio, ${videoTracks.length} video)');
+      print('✅ All streams added to peer connection (${audioTracks.length} audio, ${videoTracks.length} video)');
     } catch (e) {
-      print('Failed to add stream: $e');
+      print('❌ Failed to add stream: $e');
       rethrow;
     }
   }

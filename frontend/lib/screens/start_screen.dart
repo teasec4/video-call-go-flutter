@@ -4,7 +4,9 @@ import '../providers/call_controller.dart';
 import 'home_screen.dart';
 
 class StartScreen extends ConsumerStatefulWidget {
-  const StartScreen({super.key});
+  final String? initialRoomId;
+
+  const StartScreen({super.key, this.initialRoomId});
 
   @override
   ConsumerState<StartScreen> createState() => _StartScreenState();
@@ -18,6 +20,17 @@ class _StartScreenState extends ConsumerState<StartScreen> {
   void initState() {
     super.initState();
     roomIdController = TextEditingController();
+    
+    if (widget.initialRoomId != null && widget.initialRoomId!.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _tryAutoJoinRoom();
+      });
+    }
+  }
+
+  void _tryAutoJoinRoom() async {
+    print('🔗 Auto-joining room: ${widget.initialRoomId}');
+    await _joinRoom(widget.initialRoomId!);
   }
 
   @override
@@ -273,5 +286,46 @@ class _StartScreenState extends ConsumerState<StartScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _joinRoom(String roomId) async {
+    if (roomId.isEmpty) return;
+    
+    setState(() => isLoading = true);
+    try {
+      final callController = ref.read(callControllerProvider.notifier);
+      await callController.joinRoom(roomId);
+      
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => const HomeScreen(
+              localRenderer: null,
+              remoteRenderer: null,
+              renderersInitialized: true,
+              isCallActive: false,
+              isMicrophoneEnabled: true,
+              availablePeers: [],
+              messages: [],
+              messageController: null,
+              onSendMessage: null,
+              onCallPeer: null,
+              onToggleMicrophone: null,
+              onEndCall: null,
+              myId: '',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ Join failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed: $e')),
+        );
+      }
+    } finally {
+      setState(() => isLoading = false);
+    }
   }
 }

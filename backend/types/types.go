@@ -29,7 +29,7 @@ func (m *Message) Validate() error {
 		if len(m.Payload) == 0 {
 			return fmt.Errorf("%s requires payload", m.Type)
 		}
-	case "list-peers":
+	case "create-room", "join-room", "leave-room", "list-peers":
 		// no validation needed
 	default:
 		return fmt.Errorf("unknown message type: %s", m.Type)

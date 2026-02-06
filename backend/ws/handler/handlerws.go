@@ -4,6 +4,8 @@ import (
 	"callserver/config"
 	"callserver/types"
 	"callserver/ws/client"
+	"callserver/ws/message"
+	"callserver/ws/room"
 	"context"
 	"encoding/json"
 	"log"
@@ -35,16 +37,22 @@ func (ms *messageStore) GetAllMessages() []*types.Message {
 type HandlerWebSocket struct {
 	Upgrader       websocket.Upgrader
 	ClientManager  *client.ClientManager
+	RoomManager    *room.RoomManager
 	Broadcast      chan []byte
 	messageStore   *messageStore
+	msgBuilder     *message.MessageBuilder
+	msgSender      *message.MessageSender
 }
 
-func NewHandlerFromConfig(config *config.Config, clientManager *client.ClientManager) *HandlerWebSocket {
+func NewHandlerFromConfig(cfg *config.Config, clientManager *client.ClientManager) *HandlerWebSocket {
 	return &HandlerWebSocket{
-		Upgrader:       config.Upgrader,
+		Upgrader:       cfg.Upgrader,
 		ClientManager:  clientManager,
-		Broadcast:      config.Broadcast,
+		RoomManager:    room.NewRoomManager(),
+		Broadcast:      cfg.Broadcast,
 		messageStore:   &messageStore{},
+		msgBuilder:     message.NewMessageBuilder(log.Default()),
+		msgSender:      message.NewMessageSender(log.Default()),
 	}
 }
 
@@ -71,6 +79,8 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 		h.ClientManager.Remove(newClient.Id)
 		log.Println("Client disconnected:", newClient.Id, "\nTotal clients:", len(h.ClientManager.List()))
 		h.ClientManager.NotifyPeer(newClient, false)
+		// Удаляем клиента из комнаты при отключении
+		h.RoomManager.LeaveRoom(newClient)
 	}()
 
 	for {
@@ -93,19 +103,26 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 		}
 
 		switch msg.Type {
-		case "chat":
-			h.messageStore.SaveMessage(&msg)
-			chatBytes, err := h.marshalChatMessage(msg.From, msg.Payload)
-			if err != nil {
-				log.Println("Failed to marshal chat message:", err)
-				continue
-			}
-			h.Broadcast <- chatBytes
+		case config.MessageTypeCreateRoom:
+			h.handleCreateRoom(newClient)
 
-		case "list-peers":
+		case config.MessageTypeJoinRoom:
+			h.handleJoinRoom(newClient, msg.Payload)
+
+		case config.MessageTypeLeaveRoom:
+			h.handleLeaveRoom(newClient)
+
+		case config.MessageTypeChat:
+			h.messageStore.SaveMessage(&msg)
+			chatBytes := h.msgBuilder.BuildChatResponse(msg.From, msg.Payload)
+			if chatBytes != nil {
+				h.Broadcast <- chatBytes
+			}
+
+		case config.MessageTypeListPeers:
 			h.ClientManager.SendPeerList(newClient)
 
-		case "offer", "answer", "ice-candidate":
+		case config.MessageTypeOffer, config.MessageTypeAnswer, config.MessageTypeIceCandidate:
 			if msg.To == "" {
 				log.Println("ERROR: No 'to' field in", msg.Type)
 				continue
@@ -117,19 +134,8 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 				continue
 			}
 
-			response := map[string]interface{}{
-				"type":    msg.Type,
-				"from":    newClient.Id,
-				"payload": msg.Payload,
-			}
-			respBytes, err := json.Marshal(response)
-			if err != nil {
-				log.Println("Failed to marshal response:", err)
-				continue
-			}
-
-			err = peer.Conn.WriteMessage(websocket.TextMessage, respBytes)
-			if err != nil {
+			respBytes := h.msgBuilder.BuildSignalingResponse(msg.Type, newClient.Id, msg.Payload)
+			if err := h.msgSender.SendToClient(peer.Conn, respBytes); err != nil {
 				log.Println("Failed to send message to peer:", err)
 			} else {
 				log.Println("Successfully sent", msg.Type, "to peer:", msg.To[:8])
@@ -176,4 +182,80 @@ func (h *HandlerWebSocket) StartBroadcaster(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// handleCreateRoom создает новую комнату и отправляет UUID клиенту
+func (h *HandlerWebSocket) handleCreateRoom(client *client.Client) {
+	roomID := h.RoomManager.CreateRoom()
+	respBytes := h.msgBuilder.BuildRoomCreatedResponse(roomID)
+	
+	if err := h.msgSender.SendToClient(client.Conn, respBytes); err != nil {
+		log.Println("Failed to send room-created:", err)
+	} else {
+		log.Println("Room created:", roomID[:8])
+	}
+}
+
+// handleJoinRoom присоединяет клиента к комнате
+func (h *HandlerWebSocket) handleJoinRoom(client *client.Client, payload json.RawMessage) {
+	var data map[string]string
+	if err := json.Unmarshal(payload, &data); err != nil {
+		log.Println("Failed to unmarshal join-room payload:", err)
+		h.msgSender.SendToClient(client.Conn, h.msgBuilder.BuildErrorResponse(config.ErrInvalidPayload))
+		return
+	}
+
+	roomID, ok := data["roomId"]
+	if !ok {
+		log.Println("No roomId in join-room payload")
+		h.msgSender.SendToClient(client.Conn, h.msgBuilder.BuildErrorResponse(config.ErrInvalidPayload))
+		return
+	}
+
+	if !h.RoomManager.RoomExists(roomID) {
+		h.msgSender.SendToClient(client.Conn, h.msgBuilder.BuildErrorResponse(config.ErrRoomNotFound))
+		return
+	}
+
+	success, count := h.RoomManager.JoinRoom(roomID, client)
+	if !success {
+		h.msgSender.SendToClient(client.Conn, h.msgBuilder.BuildErrorResponse(config.ErrRoomFull))
+		return
+	}
+
+	// Отправляем подтверждение присоединения
+	respBytes := h.msgBuilder.BuildRoomJoinedResponse(roomID, client.Id, count)
+	h.msgSender.SendToClient(client.Conn, respBytes)
+
+	// Уведомляем другого клиента в комнате о присоединении
+	h.notifyRoomPeers(roomID, client.Id, config.MessageTypePeerJoined)
+
+	log.Println("Client", client.Id[:8], "joined room", roomID[:8], "total in room:", count)
+}
+
+// handleLeaveRoom удаляет клиента из комнаты
+func (h *HandlerWebSocket) handleLeaveRoom(client *client.Client) {
+	if client.RoomId == "" {
+		return
+	}
+
+	roomID := client.RoomId
+	h.RoomManager.LeaveRoom(client)
+
+	// Уведомляем оставшегося клиента
+	h.notifyRoomPeers(roomID, client.Id, config.MessageTypePeerLeft)
+
+	log.Println("Client", client.Id[:8], "left room", roomID[:8])
+}
+
+// notifyRoomPeers отправляет сообщение всем клиентам в комнате, кроме отправителя
+func (h *HandlerWebSocket) notifyRoomPeers(roomID string, excludeClientID string, msgType string) {
+	clients := h.RoomManager.GetRoomClients(roomID)
+	notifyBytes := h.msgBuilder.BuildPeerNotificationResponse(msgType, excludeClientID)
+	
+	for _, c := range clients {
+		if c.Id != excludeClientID {
+			h.msgSender.SendToClient(c.Conn, notifyBytes)
+		}
+	}
 }

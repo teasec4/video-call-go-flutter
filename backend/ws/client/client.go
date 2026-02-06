@@ -10,8 +10,9 @@ import (
 )
 
 type Client struct {
-	Conn *websocket.Conn
-	Id   string
+	Conn   *websocket.Conn
+	Id     string
+	RoomId string
 }
 
 type ClientManager struct {

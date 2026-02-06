@@ -38,9 +38,7 @@ class _ChatAreaState extends State<ChatArea> {
   Widget build(BuildContext context) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
-        _scrollController.jumpTo(
-          _scrollController.position.maxScrollExtent,
-        );
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
       }
     });
 
@@ -57,31 +55,32 @@ class _ChatAreaState extends State<ChatArea> {
             : ListView.builder(
                 controller: _scrollController,
                 itemCount: widget.messages.length,
-                padding: const EdgeInsets.symmetric(vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 8,
+                  horizontal: 12,
+                ),
                 itemBuilder: (context, index) {
                   final msg = widget.messages[index];
                   final isOwn = widget.myId == msg.from;
+
+                  // Debug
+                  print(
+                    'Message $index: from=${msg.from}, myId=${widget.myId}, isOwn=$isOwn, payload=${msg.payload}',
+                  );
+
                   return Align(
-                    alignment:
-                        isOwn ? Alignment.centerRight : Alignment.centerLeft,
+                    alignment: isOwn
+                        ? Alignment.centerRight
+                        : Alignment.centerLeft,
                     child: Container(
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 4,
-                      ),
+                      margin: const EdgeInsets.symmetric(vertical: 4),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 14,
                         vertical: 10,
                       ),
                       decoration: BoxDecoration(
                         color: isOwn ? Colors.blue[600] : Colors.grey[700],
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
-                            blurRadius: 4,
-                          ),
-                        ],
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
                         msg.payload.toString(),

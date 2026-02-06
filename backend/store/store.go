@@ -1,8 +1,12 @@
 package store
 
-import "callserver/types"
+import (
+	"callserver/types"
+	"sync"
+)
 
 type Storer struct{
+	mu       sync.RWMutex
 	Messages []types.Message
 	RoomId string
 }

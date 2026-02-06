@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:uuid/uuid.dart';
 
 import 'package:frontend/models/message_model.dart';
 import 'package:frontend/services/media_service.dart';
@@ -9,7 +11,11 @@ import 'package:frontend/services/signaling_service.dart';
 import 'package:frontend/services/webrtc_service.dart';
 
 class CallController extends StateNotifier<CallState> {
-  CallController() : super(CallState.initial());
+  CallController() : super(CallState.initial()) {
+    webrtcService = WebrtcService();
+    _clientId = const Uuid().v4();
+    state = state.copyWith(clientId: _clientId);
+  }
 
   // Services
   late MediaService mediaService;
@@ -19,8 +25,11 @@ class CallController extends StateNotifier<CallState> {
   final String _wsUrl = kIsWeb
       ? 'ws://localhost:8081/ws'
       : 'ws://localhost:8081/ws';
-  
+
   bool _initialized = false;
+  bool _cameraInitialized = false;
+  late String _clientId;
+  Completer<void>? _roomResponseCompleter;
 
   Future<void> init() async {
     if (_initialized) return;
@@ -28,6 +37,7 @@ class CallController extends StateNotifier<CallState> {
 
     try {
       print('=== INIT START ===');
+      print('Client ID: ${_clientId.substring(0, 8)}...');
 
       // Request permissions
       if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
@@ -37,15 +47,7 @@ class CallController extends StateNotifier<CallState> {
 
       // Initialize services
       print('Initializing WebRTC service...');
-      webrtcService = WebrtcService();
       await webrtcService.initRenderers();
-
-      print('Initializing Media service...');
-      mediaService = MediaService();
-      await mediaService.startMedia();
-
-      // Set local stream to renderer
-      webrtcService.localRenderer.srcObject = mediaService.localStream;
 
       // Initialize signaling
       print('Initializing Signaling service...');
@@ -53,6 +55,7 @@ class CallController extends StateNotifier<CallState> {
 
       await signalingService.connect(
         _wsUrl,
+        _clientId,
         _handleSignalingMessage,
         _handleSignalingError,
       );
@@ -76,39 +79,165 @@ class CallController extends StateNotifier<CallState> {
     }
   }
 
+  Future<void> initializeCamera() async {
+    if (_cameraInitialized) return;
+    _cameraInitialized = true;
+
+    try {
+      print('Initializing Media service...');
+      mediaService = MediaService();
+      await mediaService.startMedia();
+
+      // Set local stream to renderer
+      webrtcService.localRenderer.srcObject = mediaService.localStream;
+      print('Camera initialized');
+    } catch (e) {
+      print('Error initializing camera: $e');
+      _cameraInitialized = false;
+      rethrow;
+    }
+  }
+
+  Future<void> stopCamera() async {
+    if (!_cameraInitialized) return;
+    _cameraInitialized = false;
+
+    try {
+      print('Stopping camera...');
+      mediaService.dispose();
+      webrtcService.localRenderer.srcObject = null;
+      print('Camera stopped');
+    } catch (e) {
+      print('Error stopping camera: $e');
+    }
+  }
+
   void _handleSignalingMessage(SignalingMessage msg) {
     print('=== MESSAGE RECEIVED ===');
     print('Type: ${msg.type}, From: ${msg.from}');
 
     switch (msg.type) {
-      case 'client-id':
-        state = state.copyWith(clientId: msg.payload['id'] as String);
-        print('Connected as: ${state.clientId.substring(0, 8)}...');
-        listPeers();
-        break;
-
       case 'peer-list':
         final peers = List<String>.from(msg.payload ?? []);
         state = state.copyWith(availablePeers: peers);
         print('Available peers: $peers');
         break;
 
+      // Peer notifications from legacy system or room system
       case 'peer-joined':
-        final peerId = msg.payload['id'] as String;
-        if (!state.availablePeers.contains(peerId)) {
-          final updatedPeers = [...state.availablePeers, peerId];
-          state = state.copyWith(availablePeers: updatedPeers);
+        // Check if it's from room system (has 'peerId') or legacy (has 'id')
+        final peerId =
+            msg.payload['peerId'] as String? ?? msg.payload['id'] as String?;
+        if (peerId != null) {
+          if (state.roomId.isNotEmpty) {
+            // Room system: peer joined the room
+            final peerCount = msg.payload['peerCount'] as int? ?? 2;
+            state = state.copyWith(
+              connectedPeerId: peerId,
+              peerCount: peerCount,
+            );
+            print(
+              'Peer joined room: ${peerId.substring(0, 8)}... (total: $peerCount)',
+            );
+            print(
+              'DEBUG peer-joined: isCallActive=${state.isCallActive}, connectedPeerId=${state.connectedPeerId}',
+            );
+
+            // Automatically initiate call when peer joins
+            if (peerId.isNotEmpty && !state.isCallActive) {
+              print(
+                'Auto-initiating call with peer: ${peerId.substring(0, 8)}...',
+              );
+              callPeer(peerId);
+            } else {
+              print(
+                'Auto-call conditions NOT met: peerId.isEmpty=${peerId.isEmpty}, isCallActive=${state.isCallActive}',
+              );
+            }
+          } else {
+            // Legacy system: peer available
+            if (!state.availablePeers.contains(peerId)) {
+              final updatedPeers = [...state.availablePeers, peerId];
+              state = state.copyWith(availablePeers: updatedPeers);
+            }
+            print('Peer joined: ${peerId.substring(0, 8)}...');
+          }
         }
-        print('Peer joined: ${peerId.substring(0, 8)}...');
         break;
 
       case 'peer-left':
-        final peerId = msg.payload['id'] as String;
-        final updatedPeers = state.availablePeers
-            .where((id) => id != peerId)
-            .toList();
-        state = state.copyWith(availablePeers: updatedPeers);
-        print('Peer left: ${peerId.substring(0, 8)}...');
+        final peerId =
+            msg.payload['peerId'] as String? ?? msg.payload['id'] as String?;
+        if (peerId != null) {
+          if (state.roomId.isNotEmpty) {
+            // Room system: peer left the room
+            print('Peer left room: ${peerId.substring(0, 8)}...');
+            if (state.connectedPeerId == peerId) {
+              endCall();
+              state = state.copyWith(connectedPeerId: '', peerCount: 1);
+            }
+          } else {
+            // Legacy system
+            final updatedPeers = state.availablePeers
+                .where((id) => id != peerId)
+                .toList();
+            state = state.copyWith(availablePeers: updatedPeers);
+            print('Peer left: ${peerId.substring(0, 8)}...');
+          }
+        }
+        break;
+
+      // Room system messages
+      case 'room-created':
+        final roomId = msg.payload['roomId'] as String;
+        state = state.copyWith(roomId: roomId, peerCount: 1);
+        print('Room created: ${roomId.substring(0, 8)}...');
+        _roomResponseCompleter?.complete();
+        _roomResponseCompleter = null;
+        break;
+
+      case 'room-joined':
+        final roomId = msg.payload['roomId'] as String;
+        final peerCount = msg.payload['peerCount'] as int;
+
+        // Получаем ID другого пира в комнате
+        final connectedPeer = msg.payload['connectedPeer'] as String? ?? '';
+
+        state = state.copyWith(
+          roomId: roomId,
+          peerCount: peerCount,
+          connectedPeerId: connectedPeer,
+        );
+
+        print(
+          'Joined room: ${roomId.substring(0, 8)}..., Peers: $peerCount, Connected: ${connectedPeer.isEmpty ? "waiting" : connectedPeer.substring(0, 8)}',
+        );
+        print(
+          'DEBUG room-joined: connectedPeer=$connectedPeer, isCallActive=${state.isCallActive}',
+        );
+
+        // Automatically initiate call if peer is already in room
+        if (connectedPeer.isNotEmpty && !state.isCallActive) {
+          print(
+            'Auto-initiating call with existing peer: ${connectedPeer.substring(0, 8)}...',
+          );
+          callPeer(connectedPeer);
+        } else {
+          print(
+            'Auto-call skipped: connectedPeer.isEmpty=${connectedPeer.isEmpty}, isCallActive=${state.isCallActive}',
+          );
+        }
+
+        _roomResponseCompleter?.complete();
+        _roomResponseCompleter = null;
+        break;
+
+      case 'room-error':
+        final error = msg.payload['error'] as String;
+        print('Room error: $error');
+        state = state.copyWith(lastError: error);
+        _roomResponseCompleter?.completeError(error);
+        _roomResponseCompleter = null;
         break;
 
       case 'offer':
@@ -124,9 +253,13 @@ class CallController extends StateNotifier<CallState> {
         break;
 
       case 'chat':
-        state = state.copyWith(
-          messages: [...state.messages, msg],
-        );
+        print('========== CHAT MESSAGE RECEIVED ==========');
+        print('From: ${msg.from}');
+        print('Payload: ${msg.payload}');
+        print('My ID: $_clientId');
+        print('Is own? ${msg.from == _clientId}');
+        state = state.copyWith(messages: [...state.messages, msg]);
+        print('Total messages: ${state.messages.length}');
         break;
     }
   }
@@ -139,9 +272,72 @@ class CallController extends StateNotifier<CallState> {
     signalingService.sendMessage(SignalingMessage(type: 'list-peers'));
   }
 
+  Future<void> createRoom() async {
+    print('Creating room...');
+    print('DEBUG: signalingService initialized? ${signalingService != null}');
+
+    if (signalingService == null) {
+      print('❌ ERROR: signalingService not initialized!');
+      throw Exception('Signaling service not initialized');
+    }
+
+    _roomResponseCompleter = Completer<void>();
+    print('DEBUG: Sending create-room message...');
+    signalingService.sendMessage(SignalingMessage(type: 'create-room'));
+    print('DEBUG: Waiting for room-created response...');
+
+    try {
+      await _roomResponseCompleter!.future.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          throw Exception('Room creation timeout - no response from server');
+        },
+      );
+      print('✅ Room created successfully');
+    } catch (e) {
+      print('❌ Room creation failed: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> joinRoom(String roomId) async {
+    print('Joining room: ${roomId.substring(0, 8)}...');
+    _roomResponseCompleter = Completer<void>();
+    signalingService.sendMessage(
+      SignalingMessage(type: 'join-room', payload: {'roomId': roomId}),
+    );
+    await _roomResponseCompleter!.future;
+  }
+
+  Future<void> leaveRoom() async {
+    print('Leaving room...');
+
+    // End call first
+    endCall();
+
+    // Stop camera
+    await stopCamera();
+
+    // Send leave-room message
+    signalingService.sendMessage(SignalingMessage(type: 'leave-room'));
+
+    // Reset state
+    state = state.copyWith(
+      roomId: '',
+      peerCount: 0,
+      connectedPeerId: '',
+      isCallActive: false,
+    );
+
+    print('Left room');
+  }
+
   void callPeer(String peerId) async {
+    print('========== CALL PEER START ==========');
+    print('Peer ID: ${peerId.substring(0, 8)}...');
+
     if (webrtcService.peerConnection != null) {
-      print('Call already in progress');
+      print('❌ Call already in progress');
       return;
     }
 
@@ -149,6 +345,23 @@ class CallController extends StateNotifier<CallState> {
     state = state.copyWith(connectedPeerId: peerId);
 
     try {
+      // Ensure camera is initialized before starting call
+      if (!_cameraInitialized) {
+        print('⏳ Waiting for camera initialization...');
+        await initializeCamera();
+        print('✅ Camera initialized');
+      } else {
+        print('✅ Camera already initialized');
+      }
+
+      // Ensure we have a local stream
+      if (mediaService.localStream == null) {
+        print('❌ ERROR: Local stream not available');
+        return;
+      }
+      print('✅ Local stream available');
+
+      print('Initializing peer connection...');
       await webrtcService.initPeerConnection(
         (description) {
           // Send local description to peer
@@ -180,21 +393,27 @@ class CallController extends StateNotifier<CallState> {
         },
       );
 
-      webrtcService.addStream(mediaService.localStream!);
+      print('Adding local stream...');
+      await webrtcService.addStream(mediaService.localStream!);
+      print('✅ Local stream added');
 
+      print('Creating offer...');
       final offer = await webrtcService.createOffer();
+      print('✅ Offer created: ${offer.type}');
 
       final payload = {'type': offer.type, 'sdp': offer.sdp};
 
+      print('Sending offer to peer...');
       signalingService.sendMessage(
         SignalingMessage(type: 'offer', to: peerId, payload: payload),
       );
+      print('✅ Offer sent to ${peerId.substring(0, 8)}...');
 
       state = state.copyWith(isCallActive: true);
 
-      print('Call initiated with ${peerId.substring(0, 8)}...');
+      print('========== CALL PEER END - SUCCESS ==========');
     } catch (e) {
-      print('Error initiating call: $e');
+      print('❌ Error initiating call: $e');
       state = state.copyWith(connectedPeerId: '');
     }
   }
@@ -240,7 +459,7 @@ class CallController extends StateNotifier<CallState> {
         },
       );
 
-      webrtcService.addStream(mediaService.localStream!);
+      await webrtcService.addStream(mediaService.localStream!);
 
       final sdp = payload['sdp'] as String;
       final type = payload['type'] as String;
@@ -292,24 +511,22 @@ class CallController extends StateNotifier<CallState> {
   }
 
   void endCall() {
-    webrtcService.closePeerConnection();
-    webrtcService.remoteRenderer.srcObject = null;
+    try {
+      webrtcService.closePeerConnection();
+      webrtcService.remoteRenderer.srcObject = null;
 
-    state = state.copyWith(
-      isCallActive: false,
-      connectedPeerId: '',
-    );
+      state = state.copyWith(isCallActive: false, connectedPeerId: '');
 
-    print('Call ended');
-    listPeers();
+      print('Call ended');
+    } catch (e) {
+      print('Error ending call: $e');
+    }
   }
 
   void toggleMicrophone() {
     mediaService.toggleMicrophone(!state.isMicrophoneEnabled);
 
-    state = state.copyWith(
-      isMicrophoneEnabled: !state.isMicrophoneEnabled,
-    );
+    state = state.copyWith(isMicrophoneEnabled: !state.isMicrophoneEnabled);
 
     print('Microphone ${state.isMicrophoneEnabled ? 'enabled' : 'disabled'}');
   }
@@ -317,16 +534,41 @@ class CallController extends StateNotifier<CallState> {
   void sendMessage(String text) {
     if (text.isEmpty) return;
 
-    signalingService.sendMessage(
-      SignalingMessage(type: 'chat', payload: text),
-    );
+    print('========== SENDING MESSAGE ==========');
+    print('Text: $text');
+    print('My ID: $_clientId');
+
+    // Send to server (server will broadcast back with From field set properly)
+    signalingService.sendMessage(SignalingMessage(type: 'chat', payload: text));
+
+    print('✅ Message sent to server, waiting for broadcast response...');
   }
 
   @override
   void dispose() {
-    signalingService.disconnect();
-    mediaService.dispose();
-    webrtcService.dispose();
+    try {
+      print('=== DISPOSING CALL CONTROLLER ===');
+
+      // End current call if active
+      if (state.isCallActive) {
+        endCall();
+      }
+
+      // Stop camera if initialized
+      if (_cameraInitialized) {
+        mediaService.dispose();
+      }
+
+      // Close peer connection
+      webrtcService.dispose();
+
+      // Disconnect from signaling server
+      signalingService.disconnect();
+
+      print('=== CALL CONTROLLER DISPOSED ===');
+    } catch (e) {
+      print('Error during dispose: $e');
+    }
     super.dispose();
   }
 }
@@ -336,9 +578,14 @@ class CallState {
   final String clientId;
   final String connectedPeerId;
   final List<String> availablePeers;
+  // room info
+  final String roomId;
+  final int peerCount;
   // bool control
   final bool isCallActive;
   final bool isMicrophoneEnabled;
+  // error handling
+  final String? lastError;
   // chat
   final List<SignalingMessage> messages;
 
@@ -346,8 +593,11 @@ class CallState {
     required this.clientId,
     required this.connectedPeerId,
     required this.availablePeers,
+    required this.roomId,
+    required this.peerCount,
     required this.isCallActive,
     required this.isMicrophoneEnabled,
+    this.lastError,
     required this.messages,
   });
 
@@ -356,8 +606,11 @@ class CallState {
       clientId: '',
       connectedPeerId: '',
       availablePeers: [],
+      roomId: '',
+      peerCount: 0,
       isCallActive: false,
       isMicrophoneEnabled: true,
+      lastError: null,
       messages: [],
     );
   }
@@ -366,26 +619,33 @@ class CallState {
     String? clientId,
     String? connectedPeerId,
     List<String>? availablePeers,
+    String? roomId,
+    int? peerCount,
     bool? isCallActive,
     bool? isMicrophoneEnabled,
+    String? lastError,
     List<SignalingMessage>? messages,
   }) {
     return CallState(
       clientId: clientId ?? this.clientId,
       connectedPeerId: connectedPeerId ?? this.connectedPeerId,
       availablePeers: availablePeers ?? this.availablePeers,
+      roomId: roomId ?? this.roomId,
+      peerCount: peerCount ?? this.peerCount,
       isCallActive: isCallActive ?? this.isCallActive,
       isMicrophoneEnabled: isMicrophoneEnabled ?? this.isMicrophoneEnabled,
+      lastError: lastError,
       messages: messages ?? this.messages,
     );
   }
 }
 
 // Провайдер для CallController
-final callControllerProvider =
-    StateNotifierProvider<CallController, CallState>((ref) {
-  return CallController();
-});
+final callControllerProvider = StateNotifierProvider<CallController, CallState>(
+  (ref) {
+    return CallController();
+  },
+);
 
 // Провайдер для инициализации
 final callInitProvider = FutureProvider<void>((ref) async {

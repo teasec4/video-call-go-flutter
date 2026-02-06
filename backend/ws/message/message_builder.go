@@ -10,6 +10,13 @@ type Response struct {
 	Payload map[string]interface{} `json:"payload"`
 }
 
+// ChatMessage представляет chat сообщение с from на верхнем уровне
+type ChatMessage struct {
+	Type    string      `json:"type"`
+	From    string      `json:"from"`
+	Payload interface{} `json:"payload"`
+}
+
 // MessageBuilder помогает создавать JSON сообщения без дублирования
 type MessageBuilder struct {
 	logger Logger
@@ -65,10 +72,21 @@ func (mb *MessageBuilder) BuildRoomJoinedResponse(roomID, peerID string, peerCou
 	})
 }
 
+// BuildRoomJoinedResponseWithPeer создает room-joined response с ID другого пира в комнате
+func (mb *MessageBuilder) BuildRoomJoinedResponseWithPeer(roomID, clientID, otherClientID string, peerCount int) []byte {
+	return mb.BuildResponse("room-joined", map[string]interface{}{
+		"roomId":        roomID,
+		"peerId":        clientID,
+		"connectedPeer": otherClientID,
+		"peerCount":     peerCount,
+	})
+}
+
 // BuildPeerNotificationResponse создает peer notification (peer-joined/peer-left)
-func (mb *MessageBuilder) BuildPeerNotificationResponse(msgType, peerID string) []byte {
+func (mb *MessageBuilder) BuildPeerNotificationResponse(msgType, peerID string, peerCount int) []byte {
 	return mb.BuildResponse(msgType, map[string]interface{}{
-		"peerId": peerID,
+		"peerId":    peerID,
+		"peerCount": peerCount,
 	})
 }
 
@@ -94,10 +112,19 @@ func (mb *MessageBuilder) BuildPeerListResponse(peerIDs []string) []byte {
 	})
 }
 
-// BuildChatResponse создает chat response
+// BuildChatResponse создает chat response с from на верхнем уровне
 func (mb *MessageBuilder) BuildChatResponse(fromID string, payload json.RawMessage) []byte {
-	return mb.BuildResponse("chat", map[string]interface{}{
-		"from":    fromID,
-		"payload": payload,
-	})
+	chatMsg := ChatMessage{
+		Type:    "chat",
+		From:    fromID,
+		Payload: json.RawMessage(payload),
+	}
+	
+	bytes, err := json.Marshal(chatMsg)
+	if err != nil {
+		mb.logger.Println("Failed to marshal chat message:", err)
+		return nil
+	}
+	
+	return bytes
 }

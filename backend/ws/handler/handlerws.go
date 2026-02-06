@@ -66,20 +66,52 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 	}
 	defer conn.Close()
 
-	newClient := client.NewClient(conn)
+	// Ждем первого сообщения с client ID от клиента
+	var clientId string
+	clientIdReceived := false
+
+	// Читаем первое сообщение для регистрации
+	_, firstMsg, err := conn.ReadMessage()
+	if err != nil {
+		log.Println("Failed to read first message:", err)
+		return
+	}
+
+	var firstMsgData map[string]interface{}
+	if err := json.Unmarshal(firstMsg, &firstMsgData); err == nil {
+		if id, ok := firstMsgData["clientId"].(string); ok && id != "" {
+			clientId = id
+			clientIdReceived = true
+		}
+	}
+
+	if !clientIdReceived {
+		log.Println("First message must contain clientId")
+		return
+	}
+
+	newClient := &client.Client{
+		Conn: conn,
+		Id:   clientId,
+	}
 	h.ClientManager.Add(newClient)
 
-	log.Println("Client connected:", newClient.Id, "\nTotal clients:", len(h.ClientManager.List()))
+	log.Println("Client registered:", newClient.Id, "\nTotal clients:", len(h.ClientManager.List()))
 
-	h.ClientManager.SendClientTheirId(newClient)
 	h.sendChatHistory(newClient)
-	h.ClientManager.NotifyPeer(newClient, true)
+	// NotifyPeer is only for legacy peer-list system, not needed for room-based system
+	// Peer join/leave notifications are handled by room-specific messages
 
 	defer func() {
+		// Notify room peers BEFORE removing from room
+		if newClient.RoomId != "" {
+			h.notifyRoomPeers(newClient.RoomId, newClient.Id, config.MessageTypePeerLeft)
+		}
+		
 		h.ClientManager.Remove(newClient.Id)
 		log.Println("Client disconnected:", newClient.Id, "\nTotal clients:", len(h.ClientManager.List()))
-		h.ClientManager.NotifyPeer(newClient, false)
-		// Удаляем клиента из комнаты при отключении
+		
+		// Remove from room
 		h.RoomManager.LeaveRoom(newClient)
 	}()
 
@@ -184,15 +216,25 @@ func (h *HandlerWebSocket) StartBroadcaster(ctx context.Context) {
 	}()
 }
 
-// handleCreateRoom создает новую комнату и отправляет UUID клиенту
+// handleCreateRoom создает новую комнату и автоматически добавляет создателя в комнату
 func (h *HandlerWebSocket) handleCreateRoom(client *client.Client) {
 	roomID := h.RoomManager.CreateRoom()
-	respBytes := h.msgBuilder.BuildRoomCreatedResponse(roomID)
 	
+	// Автоматически добавляем создателя в его же комнату
+	success, count := h.RoomManager.JoinRoom(roomID, client)
+	if !success {
+		log.Println("ERROR: Failed to add creator to room")
+		h.msgSender.SendToClient(client.Conn, h.msgBuilder.BuildErrorResponse(config.ErrRoomFull))
+		return
+	}
+	
+	log.Println("Room created:", roomID[:8], "with creator, count:", count)
+	
+	respBytes := h.msgBuilder.BuildRoomCreatedResponse(roomID)
 	if err := h.msgSender.SendToClient(client.Conn, respBytes); err != nil {
 		log.Println("Failed to send room-created:", err)
 	} else {
-		log.Println("Room created:", roomID[:8])
+		log.Println("✅ Room created and creator added:", roomID[:8])
 	}
 }
 
@@ -223,14 +265,29 @@ func (h *HandlerWebSocket) handleJoinRoom(client *client.Client, payload json.Ra
 		return
 	}
 
-	// Отправляем подтверждение присоединения
-	respBytes := h.msgBuilder.BuildRoomJoinedResponse(roomID, client.Id, count)
+	log.Println("DEBUG: After JoinRoom - count:", count)
+
+	// Получаем ID другого клиента в комнате (если есть)
+	var otherClientId string
+	roomClients := h.RoomManager.GetRoomClients(roomID)
+	log.Println("DEBUG: Room clients count:", len(roomClients))
+	for _, c := range roomClients {
+		if c.Id != client.Id {
+			otherClientId = c.Id
+			log.Println("DEBUG: Found other client:", c.Id[:8])
+			break
+		}
+	}
+
+	// Отправляем подтверждение присоединения с ID другого клиента
+	respBytes := h.msgBuilder.BuildRoomJoinedResponseWithPeer(roomID, client.Id, otherClientId, count)
 	h.msgSender.SendToClient(client.Conn, respBytes)
 
 	// Уведомляем другого клиента в комнате о присоединении
+	log.Println("DEBUG: Notifying room peers about join")
 	h.notifyRoomPeers(roomID, client.Id, config.MessageTypePeerJoined)
 
-	log.Println("Client", client.Id[:8], "joined room", roomID[:8], "total in room:", count)
+	log.Println("✅ Client", client.Id[:8], "joined room", roomID[:8], "total in room:", count)
 }
 
 // handleLeaveRoom удаляет клиента из комнаты
@@ -251,7 +308,8 @@ func (h *HandlerWebSocket) handleLeaveRoom(client *client.Client) {
 // notifyRoomPeers отправляет сообщение всем клиентам в комнате, кроме отправителя
 func (h *HandlerWebSocket) notifyRoomPeers(roomID string, excludeClientID string, msgType string) {
 	clients := h.RoomManager.GetRoomClients(roomID)
-	notifyBytes := h.msgBuilder.BuildPeerNotificationResponse(msgType, excludeClientID)
+	peerCount := len(clients)
+	notifyBytes := h.msgBuilder.BuildPeerNotificationResponse(msgType, excludeClientID, peerCount)
 	
 	for _, c := range clients {
 		if c.Id != excludeClientID {

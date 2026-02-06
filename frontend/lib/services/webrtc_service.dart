@@ -4,14 +4,17 @@ class WebrtcService {
   late RTCVideoRenderer localRenderer;
   late RTCVideoRenderer remoteRenderer;
   RTCPeerConnection? _peerConnection;
-  List<RTCIceCandidate> _iceCandidateBuffer = [];
+  final List<RTCIceCandidate> _iceCandidateBuffer = [];
+
+  WebrtcService() {
+    localRenderer = RTCVideoRenderer();
+    remoteRenderer = RTCVideoRenderer();
+  }
 
   RTCPeerConnection? get peerConnection => _peerConnection;
   
   Future<void> initRenderers() async {
     try {
-      localRenderer = RTCVideoRenderer();
-      remoteRenderer = RTCVideoRenderer();
       await localRenderer.initialize();
       await remoteRenderer.initialize();
       print('Renderers initialized');
@@ -37,9 +40,19 @@ class WebrtcService {
         {'mandatory': {}, 'optional': []},
       );
 
+      // Handle both legacy onAddStream and modern onTrack
       _peerConnection!.onAddStream = (stream) {
-        print('Remote stream received');
+        print('Legacy: Remote stream received');
         remoteRenderer.srcObject = stream;
+      };
+
+      _peerConnection!.onTrack = (RTCTrackEvent event) {
+        print('Track received: ${event.track.kind} (${event.track.id})');
+        // Get the first stream from the event
+        if (event.streams.isNotEmpty) {
+          remoteRenderer.srcObject = event.streams[0];
+          print('Remote stream set from track event');
+        }
       };
 
       _peerConnection!.onIceCandidate = (candidate) {
@@ -107,12 +120,6 @@ class WebrtcService {
         return;
       }
 
-      if (_peerConnection!.getRemoteDescription() == null) {
-        print('Buffering ICE candidate - remote description not set');
-        _iceCandidateBuffer.add(candidate);
-        return;
-      }
-
       try {
         await _peerConnection!.addCandidate(candidate);
         print('ICE candidate added');
@@ -137,12 +144,30 @@ class WebrtcService {
     _iceCandidateBuffer.clear();
   }
 
-  void addStream(MediaStream stream) {
+  Future<void> addStream(MediaStream stream) async {
     try {
-      _peerConnection!.addStream(stream);
-      print('Stream added to peer connection');
+      if (_peerConnection == null) {
+        throw Exception('Peer connection not initialized');
+      }
+
+      // Add audio tracks
+      final audioTracks = stream.getAudioTracks();
+      for (final track in audioTracks) {
+        await _peerConnection!.addTrack(track, stream);
+        print('Audio track added: ${track.id}');
+      }
+
+      // Add video tracks
+      final videoTracks = stream.getVideoTracks();
+      for (final track in videoTracks) {
+        await _peerConnection!.addTrack(track, stream);
+        print('Video track added: ${track.id}');
+      }
+
+      print('All streams added to peer connection (${audioTracks.length} audio, ${videoTracks.length} video)');
     } catch (e) {
       print('Failed to add stream: $e');
+      rethrow;
     }
   }
 

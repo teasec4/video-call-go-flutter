@@ -1,40 +1,56 @@
 # Video Call App - Concept
 
 ## Description
-An application for peer-to-peer video calling with text chat support. Uses WebRTC for direct connection between participants and a WebSocket signaling server for exchanging initialization data.
+An application for peer-to-peer video calling with text chat support using WebRTC. Users can create or join rooms to establish video/audio connections with other participants. Uses a WebSocket signaling server for exchanging initialization data and managing room state.
 
 ## Technology Stack
 
 ### Frontend
 - **Framework**: Flutter
 - **WebRTC**: flutter_webrtc
+- **State Management**: Flutter Riverpod
 - **Signaling**: web_socket_channel
 - **Platforms**: Web, iOS, Android
 
 ### Backend
 - **Language**: Go
 - **WebSocket**: gorilla/websocket
-- **Architecture**: Signaling server (does not process media)
+- **Architecture**: Signaling and Room management server (does not process media)
 
 ## Core Components
 
 ### 1. Signaling Server (Backend)
-Manages the exchange of signaling messages between clients:
+Manages the exchange of signaling messages and room sessions:
 - Generates unique client IDs
-- Routes WebRTC offer/answer/ICE-candidates
-- Maintains list of connected peers
-- Delivers chat messages
+- Creates and manages rooms
+- Routes WebRTC offer/answer/ICE-candidates between peers
+- Maintains list of connected peers per room
+- Delivers chat messages within rooms
 
 **Port**: 8081  
 **Endpoint**: `/ws`
 
 ### 2. Frontend Application
-Client application for video calling:
-- Capturing media from your device (camera + microphone)
-- Initiating/receiving calls
-- Sending and receiving video/audio streams
-- Text chat with other clients
-- Media management (microphone enable/disable toggle)
+Multi-screen client application:
+
+#### Start Screen
+- First screen users see when launching the app
+- Shows user's unique client ID (once initialized)
+- Two main actions: "Create Room" or "Join Room"
+- Clean, minimal UI with app branding
+
+#### Room Screen
+- **Create Room**: Generates new room ID and waits for peer to join
+- **Join Room**: Allows pasting existing room ID to join
+- Displays current room status and peer count
+- Shows "Start Call" button when peer joins
+- Enables transition to video call experience
+
+#### Home Screen (Call Screen)
+- Video display area (local and remote)
+- Text chat panel (collapsible)
+- Call controls (microphone toggle, end call)
+- Message input and sending
 
 ## Features
 
@@ -42,34 +58,56 @@ Client application for video calling:
 - [x] Video calls (peer-to-peer)
 - [x] Audio calls
 - [x] Text chat
-- [x] Automatic peer discovery
+- [x] Room creation and joining
 - [x] ICE candidates buffering
 - [x] Microphone toggle during calls
-- [x] Displaying list of available peers
-- [x] Local and remote video
+- [x] Local and remote video rendering
+- [x] Multi-screen navigation (Start → Room → Call)
+- [x] Client ID generation and display
 
 ### Planned
-- [ ] Rooms/Sessions (instead of direct peer list)
-- [ ] UI Improvements
-- [ ] Code structure refactoring
-- [ ] Camera toggle
+- [ ] Camera toggle during calls
+- [ ] UI/UX enhancements
 - [ ] Screen sharing
 - [ ] Call recording
-- [ ] Enhanced error handling
+- [ ] Enhanced error handling and recovery
+- [ ] Connection quality indicators
+
+## Application Flow
+
+```
+Launch App
+    ↓
+[Start Screen] - Show client ID, choose action
+    ↓
+    ├─→ Create Room → [Room Screen] → Share Room ID → Wait for peer
+    │                      ↓
+    │              Peer joins room
+    │                      ↓
+    │             [Start Call] button enabled
+    │                      ↓
+    └──────→ [Home Screen] ← Join Room (via Room ID)
+                    ↓
+            P2P WebRTC Call + Chat
+```
 
 ## Data Flows
 
 ```
 Client A               Signaling Server              Client B
     |                          |                          |
-    |---- WebSocket connect ---|                          |
-    |---- client-id message ----|                          |
-    |                          |---- WebSocket connect ---|
-    |                          |---- client-id message ----|
+    |--- WebSocket connect ----|                          |
+    |                          |--- WebSocket connect ----|
     |                          |                          |
-    | (sees Client B in list)    (sees Client A in list)
+    |--- create-room --------->|                          |
+    |<-- room-created ---------|                          |
+    |   (gets room ID)         |                          |
+    |                          |<-- join-room ------------|
+    |                          |   (with room ID)         |
+    |<-- peer-joined -----------|                          |
+    |                          |--- peer-joined -------->|
     |                          |                          |
-    |-- initiate call -------->|                          |
+    |-- offer message -------->|                          |
     |       offer              |---- offer message ------->|
     |                          |                          |
     |                          |<---- answer message ------|
@@ -87,11 +125,28 @@ Client A               Signaling Server              Client B
 
 | Type | From | To | Description |
 |------|------|----|----|
-| client-id | Server | Client | Send client ID |
-| peer-list | Server | Client | List of available peers |
-| peer-joined | Server | All | Notification of new peer joining |
-| peer-left | Server | All | Notification of peer disconnecting |
+| create-room | Client | Server | Request to create new room |
+| room-created | Server | Client | Room created with ID |
+| join-room | Client | Server | Request to join existing room |
+| room-joined | Server | Client | Successfully joined room |
+| room-error | Server | Client | Error joining room |
+| peer-joined | Server | All in room | Notification of peer joining |
+| peer-left | Server | All in room | Notification of peer leaving |
+| leave-room | Client | Server | Request to leave room |
 | offer | Client | Peer | WebRTC offer SDP |
 | answer | Client | Peer | WebRTC answer SDP |
 | ice-candidate | Client | Peer | ICE candidate for P2P connection |
-| chat | Client | All | Text message |
+| chat | Client | Peers | Text message in room |
+
+## Navigation Structure
+
+```
+StartScreen
+├── onCreateRoom → RoomScreen (create mode)
+└── onJoinRoom → RoomScreen (join mode)
+        │
+        └── onStartCall → HomeScreen (call active)
+                    │
+                    └── onEndCall → RoomScreen
+                    └── onLeaveRoom → StartScreen
+```

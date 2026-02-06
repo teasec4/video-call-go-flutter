@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../models/message_model.dart';
@@ -6,11 +7,13 @@ class SignalingService {
   late WebSocketChannel _channel;
   late Function(SignalingMessage) onMessage;
   late Function(String) onError;
+  StreamSubscription? _streamSubscription;
 
   bool get isConnected => _channel.sink != null;
 
   Future<void> connect(
     String url,
+    String clientId,
     Function(SignalingMessage) onMessageCallback,
     Function(String) onErrorCallback,
   ) async {
@@ -20,7 +23,13 @@ class SignalingService {
 
       _channel = WebSocketChannel.connect(Uri.parse(url));
       
-      _channel.stream.listen(
+      // Send client ID as first message
+      _channel.sink.add(jsonEncode({
+        'clientId': clientId,
+      }));
+      print('Sent client ID to server: ${clientId.substring(0, 8)}...');
+      
+      _streamSubscription = _channel.stream.listen(
         (data) {
           try {
             final json = jsonDecode(data);
@@ -60,6 +69,10 @@ class SignalingService {
 
   void disconnect() {
     try {
+      // Cancel stream subscription first
+      _streamSubscription?.cancel();
+      
+      // Close the channel
       _channel.sink.close();
       print('Disconnected from signaling server');
     } catch (e) {

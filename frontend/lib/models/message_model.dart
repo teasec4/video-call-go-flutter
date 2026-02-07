@@ -1,35 +1,31 @@
-class SignalingMessage {
-  final String type;
-  final String? from;
-  final String? to;
-  final String? roomId;
-  final dynamic payload;
+class Message {
+  final String id;
+  final String sender;
+  final String content;
+  final DateTime timestamp;
+  final bool isRead;
 
-  SignalingMessage({
-    required this.type,
-    this.from,
-    this.to,
-    this.roomId,
-    this.payload,
+  Message({
+    required this.id,
+    required this.sender,
+    required this.content,
+    required this.timestamp,
+    this.isRead = false,
   });
 
-  factory SignalingMessage.fromJson(Map<String, dynamic> json) {
-    return SignalingMessage(
-      type: json['type'] as String,
-      from: json['from'] as String?,
-      to: json['to'] as String?,
-      roomId: json['roomId'] as String?,
-      payload: json['payload'],
+  Message copyWith({
+    String? id,
+    String? sender,
+    String? content,
+    DateTime? timestamp,
+    bool? isRead,
+  }) {
+    return Message(
+      id: id ?? this.id,
+      sender: sender ?? this.sender,
+      content: content ?? this.content,
+      timestamp: timestamp ?? this.timestamp,
+      isRead: isRead ?? this.isRead,
     );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'type': type,
-      if (from != null) 'from': from,
-      if (to != null) 'to': to,
-      if (roomId != null) 'roomId': roomId,
-      if (payload != null) 'payload': payload,
-    };
   }
 }

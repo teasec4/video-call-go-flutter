@@ -1,82 +1,80 @@
-import 'dart:async';
 import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
-import '../models/message_model.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 class SignalingService {
   late WebSocketChannel _channel;
-  late Function(SignalingMessage) onMessage;
-  late Function(String) onError;
-  StreamSubscription? _streamSubscription;
+  late Function(Map<String, dynamic>) _onMessage;
+  
+  bool _isConnected = false;
 
-  bool get isConnected => _channel.sink != null;
+  bool get isConnected => _isConnected;
 
-  Future<void> connect(
-    String url,
-    String clientId,
-    Function(SignalingMessage) onMessageCallback,
-    Function(String) onErrorCallback,
-  ) async {
+  Future<void> connect(String url, Function(Map<String, dynamic>) onMessage) async {
     try {
-      onMessage = onMessageCallback;
-      onError = onErrorCallback;
-
       _channel = WebSocketChannel.connect(Uri.parse(url));
-      
-      // Send client ID as first message
-      _channel.sink.add(jsonEncode({
-        'clientId': clientId,
-      }));
-      print('Sent client ID to server: ${clientId.substring(0, 8)}...');
-      
-      _streamSubscription = _channel.stream.listen(
-        (data) {
+      _onMessage = onMessage;
+      _isConnected = true;
+
+      _channel.stream.listen(
+        (message) {
           try {
-            final json = jsonDecode(data);
-            final message = SignalingMessage.fromJson(json);
-            onMessage(message);
+            final data = jsonDecode(message);
+            _onMessage(data);
           } catch (e) {
-            print('Error parsing message: $e');
+            print('Error parsing signaling message: $e');
           }
         },
         onError: (error) {
           print('WebSocket error: $error');
-          onError('Connection error: $error');
+          _isConnected = false;
         },
         onDone: () {
-          print('WebSocket closed');
-          onError('Connection closed');
+          _isConnected = false;
         },
       );
-
-      print('Connected to signaling server');
     } catch (e) {
-      print('Connection failed: $e');
-      onError('Connection failed: $e');
+      print('Error connecting to signaling service: $e');
       rethrow;
     }
   }
 
-  void sendMessage(SignalingMessage message) {
-    try {
-      final json = jsonEncode(message.toJson());
-      _channel.sink.add(json);
-      print('Message sent: ${message.type}');
-    } catch (e) {
-      print('Failed to send message: $e');
+  void sendOffer(RTCSessionDescription offer) {
+    final message = {
+      'type': 'offer',
+      'data': offer.sdp,
+    };
+    _send(message);
+  }
+
+  void sendAnswer(RTCSessionDescription answer) {
+    final message = {
+      'type': 'answer',
+      'data': answer.sdp,
+    };
+    _send(message);
+  }
+
+  void sendIceCandidate(RTCIceCandidate candidate) {
+    final message = {
+      'type': 'ice_candidate',
+      'data': {
+        'candidate': candidate.candidate,
+        'sdpMLineIndex': candidate.sdpMLineIndex,
+        'sdpMid': candidate.sdpMid,
+      }
+    };
+    _send(message);
+  }
+
+  void _send(Map<String, dynamic> message) {
+    if (_isConnected) {
+      _channel.sink.add(jsonEncode(message));
     }
   }
 
   void disconnect() {
-    try {
-      // Cancel stream subscription first
-      _streamSubscription?.cancel();
-      
-      // Close the channel
-      _channel.sink.close();
-      print('Disconnected from signaling server');
-    } catch (e) {
-      print('Error disconnecting: $e');
-    }
+    _isConnected = false;
+    _channel.sink.close();
   }
 }

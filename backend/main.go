@@ -4,6 +4,7 @@ import (
 	"callserver/config"
 	"callserver/ws/client"
 	"callserver/ws/handler"
+	"callserver/ws/room"
 	"context"
 	"fmt"
 	"log"
@@ -27,9 +28,11 @@ func main() {
 	h.StartBroadcaster(ctx)
 
 	http.HandleFunc("/ws", h.HandleConnection)
-	http.HandleFunc("/api/messages", func(w http.ResponseWriter, r *http.Request) {
-		
-	})
+	
+	rm := room.NewRoomManager()
+	rh := handler.NewRoomHandler(rm)
+	http.HandleFunc("/createroom", rh.CreateRoom)
+	http.HandleFunc("/joinroom", rh.JoinRoom)
 
 	server := &http.Server{
 		Addr: "0.0.0.0:8081",

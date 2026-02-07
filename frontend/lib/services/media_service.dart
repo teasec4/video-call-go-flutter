@@ -1,64 +1,56 @@
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 class MediaService {
-  MediaStream? _localStream;
+  late RTCPeerConnection _peerConnection;
+  late MediaStream _localStream;
   
-  MediaStream? get localStream => _localStream;
+  bool _isInitialized = false;
 
-  Future<void> startMedia() async {
+  bool get isInitialized => _isInitialized;
+  MediaStream get localStream => _localStream;
+  RTCPeerConnection get peerConnection => _peerConnection;
+
+  Future<void> initialize() async {
     try {
-      print('🎥 Requesting user media (audio + video)...');
-      _localStream = await navigator.mediaDevices.getUserMedia({
+      final constraints = {
         'audio': true,
-        'video': {'facingMode': 'user'},
-      });
-      
-      print('✅ Media stream acquired');
-      print('  Stream ID: ${_localStream?.id}');
-      print('  Total tracks: ${_localStream?.getTracks().length}');
-      
-      final audioTracks = _localStream?.getAudioTracks() ?? [];
-      final videoTracks = _localStream?.getVideoTracks() ?? [];
-      
-      print('  Audio tracks: ${audioTracks.length}');
-      for (var track in audioTracks) {
-        print('    - ${track.id} (enabled=${track.enabled})');
-      }
-      
-      print('  Video tracks: ${videoTracks.length}');
-      for (var track in videoTracks) {
-        print('    - ${track.id} (enabled=${track.enabled})');
-      }
+        'video': {
+          'mandatory': {
+            'minWidth': '640',
+            'minHeight': '480',
+            'minFrameRate': '30',
+          },
+          'facingMode': 'user',
+          'optional': [],
+        }
+      };
+
+      _localStream = await navigator.mediaDevices.getUserMedia(constraints);
+      _isInitialized = true;
     } catch (e) {
-      print('❌ Failed to start media: $e');
+      print('Error initializing media: $e');
       rethrow;
     }
   }
 
-  void toggleMicrophone(bool enabled) {
-    if (_localStream == null) return;
-    
-    final audioTracks = _localStream!.getAudioTracks();
-    for (var track in audioTracks) {
-      track.enabled = enabled;
-    }
-  }
+  Future<void> initializePeerConnection() async {
+    final configuration = {
+      'iceServers': [
+        {'urls': ['stun:stun.l.google.com:19302']}
+      ]
+    };
 
-  void toggleCamera(bool enabled) {
-    if (_localStream == null) return;
+    _peerConnection = await createPeerConnection(configuration);
     
-    final videoTracks = _localStream!.getVideoTracks();
-    for (var track in videoTracks) {
-      track.enabled = enabled;
+    for (var track in _localStream.getTracks()) {
+      await _peerConnection.addTrack(track, _localStream);
     }
   }
 
   void dispose() {
-    if (_localStream != null) {
-      for (var track in _localStream!.getTracks()) {
-        track.stop();
-      }
-      _localStream = null;
-    }
+    _localStream.getTracks().forEach((track) {
+      track.stop();
+    });
+    _peerConnection.close();
   }
 }

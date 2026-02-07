@@ -8,6 +8,9 @@ class RoomManager {
   final String userId;
   final WebsocetService websocetService;
 
+  List<Map<String, dynamic>> messages = [];
+  Function(Map<String, dynamic>)? onMessageReceived;
+
   RoomManager({
     required this.url,
     required this.wsUrl,
@@ -16,7 +19,6 @@ class RoomManager {
   });
 
   late String _currentRoomId;
- 
 
   Future<String> createRoom() async {
     try {
@@ -52,10 +54,7 @@ class RoomManager {
       final response = await http.post(
         Uri.parse('$url/joinroom'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'roomId': roomId,
-          'clientId': userId
-        }),
+        body: jsonEncode({'roomId': roomId, 'clientId': userId}),
       );
 
       print('Response status: ${response.statusCode}');
@@ -65,14 +64,11 @@ class RoomManager {
         final data = jsonDecode(response.body);
         print('Room joined successfully: $data');
         _currentRoomId = roomId;
-        
       } else {
         print('Failed to join room: ${response.statusCode}');
-        
       }
     } catch (e) {
       print('Error joining room: $e');
-      
     }
   }
 
@@ -80,11 +76,17 @@ class RoomManager {
     try {
       await websocetService.connect(wsUrl, (data) {
         print('Received from WS: $data');
+        if (data['type'] == 'chat') {
+          messages.add(data);
+          if (onMessageReceived != null) {
+            onMessageReceived!(data);
+          }
+        }
       });
 
       // Даем время на подключение
       await Future.delayed(const Duration(milliseconds: 500));
-      
+
       websocetService.send({'clientId': userId, 'roomId': _currentRoomId});
       print('✅ Connected to WebSocket and sent registration');
     } catch (e) {

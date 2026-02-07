@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:frontend/models/message.dart';
 import 'package:frontend/services/websocet_service.dart';
 import 'package:http/http.dart' as http;
 
@@ -8,8 +9,8 @@ class RoomManager {
   final String userId;
   final WebsocetService websocetService;
 
-  List<Map<String, dynamic>> messages = [];
-  Function(Map<String, dynamic>)? onMessageReceived;
+  List<Message> messages = [];
+  Function(Message)? onMessageReceived;
 
   RoomManager({
     required this.url,
@@ -76,11 +77,11 @@ class RoomManager {
     try {
       await websocetService.connect(wsUrl, (data) {
         print('Received from WS: $data');
-        if (data['type'] == 'chat') {
-          messages.add(data);
-          if (onMessageReceived != null) {
-            onMessageReceived!(data);
-          }
+        final message = Message.fromJson(data);
+        messages.add(message);
+        
+        if (onMessageReceived != null) {
+          onMessageReceived!(message);
         }
       });
 

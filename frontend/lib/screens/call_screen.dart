@@ -67,7 +67,7 @@ class _CallScreenState extends State<CallScreen> {
                 final msg = getIt<RoomManager>().messages[index];
                 return Padding(
                   padding: const EdgeInsets.all(8.0),
-                  child: Text('${msg['from']}: ${msg['payload']}'),
+                  child: Text('${msg.from}: ${msg.payload}'),
                 );
               },
             ),

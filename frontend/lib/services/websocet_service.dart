@@ -1,18 +1,21 @@
+import 'dart:async';
 import 'dart:convert';
-
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 class WebsocetService {
   late WebSocketChannel _channel;
   late Function(Map<String, dynamic>) _onMessage;
+  late bool _isConnected;
 
-  Future<void> conncet(
+  Future<void> connect(
     String url,
     Function(Map<String, dynamic>) onMessage,
   ) async {
+    _isConnected = false;
     try {
       _channel = WebSocketChannel.connect(Uri.parse(url));
       _onMessage = onMessage;
+      _isConnected = true;
 
       _channel.stream.listen(
         (message) {
@@ -24,10 +27,12 @@ class WebsocetService {
           }
         },
         onError: (error) {
-          print('WebSicket err $error');
+          print('WebSocket err $error');
+          _isConnected = false;
         },
         onDone: () {
           disconnect();
+          
         },
       );
     } catch (e) {
@@ -37,6 +42,13 @@ class WebsocetService {
   }
 
   void disconnect() {
+    if (!_isConnected) return;
+    _isConnected = false;
     _channel.sink.close();
+  }
+  
+  void send(Map<String, dynamic> data) {
+    if(!_isConnected){throw Exception('WebSocket not connected');}
+    _channel.sink.add(jsonEncode(data));
   }
 }

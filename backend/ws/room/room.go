@@ -12,7 +12,7 @@ import (
 
 type Room struct {
 	ID      string
-	Clients []*types.Client
+	Clients map[string]*types.Client
 	Messages []*types.Message
 	mu      sync.RWMutex
 }
@@ -47,20 +47,21 @@ func (rm* RoomManager) BroadcastToRoom(roomId string, msg []byte){
 }
 
 
-func (rm *RoomManager) CreateRoom(client *types.Client) string {
+func (rm *RoomManager) CreateRoom() string {
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
 
 	roomID := uuid.New().String()
 	rm.Rooms[roomID] = &Room{
 		ID:      roomID,
-		Clients: []*types.Client{client},
+		Clients: map[string]*types.Client{},
 		Messages: []*types.Message{},
 	}
 	
-	fmt.Println("✅ Created Room:", roomID, "with Client:", client.Id)
+	fmt.Println("✅ Created Room:", roomID)
 	return roomID
 }
+
 
 func (rm *RoomManager) JoinRoom(roomID string, c *types.Client) {
 	rm.mu.RLock()
@@ -75,13 +76,12 @@ func (rm *RoomManager) JoinRoom(roomID string, c *types.Client) {
 	room.mu.Lock()
 	defer room.mu.Unlock()
 
-	room.Clients = append(room.Clients, c)
+	room.Clients[c.Id] = c
 
 }
 
 // LeaveRoom удаляет клиента из комнаты
 func (rm *RoomManager) LeaveRoom(roomID string, c *types.Client) {
-	
 	rm.mu.Lock()
 	room, exists := rm.Rooms[roomID]
 	rm.mu.Unlock()
@@ -91,13 +91,7 @@ func (rm *RoomManager) LeaveRoom(roomID string, c *types.Client) {
 	}
 
 	room.mu.Lock()
-	// Находим и удаляем клиента
-	for i, client := range room.Clients {
-		if client.Id == c.Id {
-			room.Clients = append(room.Clients[:i], room.Clients[i+1:]...)
-			break
-		}
-	}
+	delete(room.Clients, c.Id)  // ← Удаляем из map
 	isEmpty := len(room.Clients) == 0
 	room.mu.Unlock()
 

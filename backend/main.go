@@ -2,7 +2,7 @@ package main
 
 import (
 	"callserver/config"
-	"callserver/ws/client"
+
 	"callserver/ws/handler"
 	"callserver/ws/room"
 	"context"
@@ -17,20 +17,23 @@ import (
 
 func main() {
 	cfg := config.ConfigInit()
-
-	// client manager
-	cm := client.NewClientManager()
-	h := handler.NewHandlerFromConfig(cfg, cm)
 	
+	// client manager
+	rm := room.NewRoomManager()
+	
+	// ws handler
+	h := handler.NewHandlerWS(cfg, rm)
+	
+	// http handler
+	rh := handler.NewRoomHandler(rm)
+	
+	// context
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	h.StartBroadcaster(ctx)
 
 	http.HandleFunc("/ws", h.HandleConnection)
-	
-	rm := room.NewRoomManager()
-	rh := handler.NewRoomHandler(rm)
 	http.HandleFunc("/createroom", rh.CreateRoom)
 	http.HandleFunc("/joinroom", rh.JoinRoom)
 

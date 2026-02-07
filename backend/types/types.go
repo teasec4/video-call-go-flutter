@@ -3,7 +3,14 @@ package types
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/gorilla/websocket"
 )
+
+type Client struct {
+	Conn   *websocket.Conn
+	Id     string
+}
 
 type Message struct {
 	Type    string          `json:"type"`
@@ -37,3 +44,5 @@ func (m *Message) Validate() error {
 
 	return nil
 }
+
+

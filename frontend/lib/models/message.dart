@@ -4,7 +4,7 @@ class Message {
   final String type;
   final String from;
   final String? to;
-  final Map<String, dynamic> payload;
+  final dynamic payload;  // ← Может быть String, Map, или что угодно
 
   Message({
     required this.type,
@@ -18,9 +18,7 @@ class Message {
       type: json['type'] as String,
       from: json['from'] as String,
       to: json['to'] as String?,
-      payload: json['payload'] is String
-          ? jsonDecode(json['payload'])
-          : json['payload'],
+      payload: json['payload'],  // ← Просто берем как есть
     );
   }
   
@@ -33,7 +31,7 @@ class Message {
      };
    }
 
-   @override
-   String toString() => 'Message(type: $type, from: $from, payload: $payload)';
+    @override
+    String toString() => 'Message(type: $type, from: $from, payload: $payload)';
 
 }

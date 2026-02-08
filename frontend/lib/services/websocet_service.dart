@@ -20,10 +20,22 @@ class WebsocetService {
       _channel.stream.listen(
         (message) {
           try {
-            final data = jsonDecode(message);
+            late Map<String, dynamic> data;
+            
+            // Если message уже Map (на web это может быть)
+            if (message is Map<String, dynamic>) {
+              data = message;
+            } else if (message is String) {
+              // Если это строка - парсим JSON
+              data = jsonDecode(message);
+            } else {
+              print("Unknown message type: ${message.runtimeType}");
+              return;
+            }
+            
             _onMessage(data);
           } catch (e) {
-            print("Error parsing data");
+            print("Error parsing data: $e");
           }
         },
         onError: (error) {

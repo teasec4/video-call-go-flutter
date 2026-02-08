@@ -78,7 +78,6 @@ class RoomManager {
       await websocetService.connect(wsUrl, (data) {
         print('Received from WS: $data');
         final message = Message.fromJson(data);
-        messages.add(message);
         
         if (onMessageReceived != null) {
           onMessageReceived!(message);

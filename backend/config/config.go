@@ -7,8 +7,7 @@ import (
 )
 
 type Config struct {
-	Upgrader  websocket.Upgrader
-	Broadcast chan []byte
+	Upgrader websocket.Upgrader
 }
 
 func ConfigInit() *Config {
@@ -20,6 +19,5 @@ func ConfigInit() *Config {
 	
 	return &Config{
 		Upgrader: upgrader,
-		Broadcast: make(chan []byte, 100),
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"callserver/config"
 	"callserver/types"
 	"callserver/ws/room"
-	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -12,16 +11,14 @@ import (
 )
 
 type HandlerWebSocket struct {
-	Upgrader       websocket.Upgrader
-	RoomManager    *room.RoomManager
-	Broadcast      chan []byte
+	Upgrader    websocket.Upgrader
+	RoomManager *room.RoomManager
 }
 
 func NewHandlerWS(cfg *config.Config, rm *room.RoomManager) *HandlerWebSocket {
 	return &HandlerWebSocket{
-		Upgrader:       cfg.Upgrader,
-		RoomManager:    rm,
-		Broadcast:      cfg.Broadcast,
+		Upgrader:    cfg.Upgrader,
+		RoomManager: rm,
 	}
 }
 
@@ -69,8 +66,9 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 		_, msgBytes, err := conn.ReadMessage()
 		if err != nil {
 			log.Println("Client disconnected:", clientId)
-			h.RoomManager.LeaveRoom(roomId, client)
+			// Broadcast user-left message BEFORE removing the client from the room
 			h.RoomManager.BroadcastToRoom(roomId, []byte(`{"type":"user-left","from":"`+clientId+`"}`))
+			h.RoomManager.LeaveRoom(roomId, client)
 			break
 		}
 
@@ -102,24 +100,6 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 	
 		}
 	}
-}
-
-
-func (h *HandlerWebSocket) StartBroadcaster(ctx context.Context) {
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				close(h.Broadcast)
-				return
-			case msg := <-h.Broadcast:
-				// Broadcast to all rooms
-				for _, room := range h.RoomManager.Rooms {
-					h.RoomManager.BroadcastToRoom(room.ID, msg)
-				}
-			}
-		}
-	}()
 }
 
 

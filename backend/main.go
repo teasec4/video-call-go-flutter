@@ -2,10 +2,10 @@ package main
 
 import (
 	"callserver/config"
+	"context"
 
 	"callserver/ws/handler"
 	"callserver/ws/room"
-	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -27,11 +27,7 @@ func main() {
 	// http handler
 	rh := handler.NewRoomHandler(rm)
 	
-	// context
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	h.StartBroadcaster(ctx)
 
 	http.HandleFunc("/ws", h.HandleConnection)
 	http.HandleFunc("/createroom", rh.CreateRoom)
@@ -48,7 +44,7 @@ func main() {
 		<-sigChan
 
 		log.Println("Shutdown signal received, closing connections...")
-		cancel()
+		rm.CloseAllConnection()
 
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()

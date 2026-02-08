@@ -130,3 +130,16 @@ func (rm *RoomManager) GetClientInRoom(roomID, clientID string) *types.Client {
 	return nil
 }
 
+func (rm *RoomManager) CloseAllConnection(){
+	rm.mu.RLock()
+	rm.mu.RUnlock()
+	
+	for _, room := range rm.Rooms{
+		room.mu.RLock()
+		for _, client := range room.Clients{
+			client.Conn.Close()
+		}
+		room.mu.RUnlock()
+	}
+}
+

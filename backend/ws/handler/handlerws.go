@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"callserver/config"
 	"callserver/types"
 	"callserver/ws/room"
 	"encoding/json"
@@ -15,9 +14,13 @@ type HandlerWebSocket struct {
 	RoomManager *room.RoomManager
 }
 
-func NewHandlerWS(cfg *config.Config, rm *room.RoomManager) *HandlerWebSocket {
+func NewHandlerWS(rm *room.RoomManager) *HandlerWebSocket {
 	return &HandlerWebSocket{
-		Upgrader:    cfg.Upgrader,
+		Upgrader: websocket.Upgrader{
+			CheckOrigin: func(r *http.Request) bool {
+				return true
+			},
+		},
 		RoomManager: rm,
 	}
 }
@@ -60,6 +63,9 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 	}
 	h.RoomManager.JoinRoom(roomId, client)
 	log.Println("✅ Client joined:", clientId, "Room:", roomId)
+	
+	// Send joined confirmation
+	conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"joined","roomId":"`+roomId+`"}`))
 
 
 	for {
@@ -97,7 +103,7 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 
 
 		case "offer", "answer", "ice-candidate":
-	
+			// for future WebRTC 
 		}
 	}
 }

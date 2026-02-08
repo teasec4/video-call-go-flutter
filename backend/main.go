@@ -1,7 +1,6 @@
 package main
 
 import (
-	"callserver/config"
 	"context"
 
 	"callserver/ws/handler"
@@ -16,19 +15,15 @@ import (
 )
 
 func main() {
-	cfg := config.ConfigInit()
-	
-	// client manager
+	// room manager
 	rm := room.NewRoomManager()
 	
 	// ws handler
-	h := handler.NewHandlerWS(cfg, rm)
+	h := handler.NewHandlerWS(rm)
 	
 	// http handler
 	rh := handler.NewRoomHandler(rm)
 	
-
-
 	http.HandleFunc("/ws", h.HandleConnection)
 	http.HandleFunc("/createroom", rh.CreateRoom)
 	http.HandleFunc("/joinroom", rh.JoinRoom)

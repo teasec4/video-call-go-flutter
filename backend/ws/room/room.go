@@ -72,6 +72,8 @@ func (rm *RoomManager) JoinRoom(roomID string, c *types.Client) {
 		log.Println("ERROR: Room not found:", roomID)
 		return
 	}
+	// TASK: add ERROR for client
+	// return bool, error
 
 	room.mu.Lock()
 	defer room.mu.Unlock()
@@ -132,14 +134,16 @@ func (rm *RoomManager) GetClientInRoom(roomID, clientID string) *types.Client {
 
 func (rm *RoomManager) CloseAllConnection(){
 	rm.mu.RLock()
-	rm.mu.RUnlock()
+	defer rm.mu.RUnlock()
 	
 	for _, room := range rm.Rooms{
 		room.mu.RLock()
 		for _, client := range room.Clients{
 			client.Conn.Close()
+			fmt.Println("Close Conncetion with: ", client.Id)
 		}
 		room.mu.RUnlock()
 	}
+
 }
 

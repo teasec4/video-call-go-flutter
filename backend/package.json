@@ -12,5 +12,8 @@
   "type": "commonjs",
   "dependencies": {
     "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1"
   }
 }

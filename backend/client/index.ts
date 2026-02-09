@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import readline from "readline/promises";
-import { connectToRoom } from "./wsCLient";
+import { connectToRoom } from "./wsClient";
 import { ChatMessage } from "./messages";
 
 async function main() {

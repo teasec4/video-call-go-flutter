@@ -44,7 +44,7 @@ func (rh *RoomHandler) CreateRoom(w http.ResponseWriter, r *http.Request){
 		http.Error(w, "invalid json body", http.StatusBadRequest)
 		return
 	}
-
+	
 	if req.ClientId == "" {
 		fmt.Println("❌ ClientId is empty")
 		http.Error(w, "clientId is required", http.StatusBadRequest)

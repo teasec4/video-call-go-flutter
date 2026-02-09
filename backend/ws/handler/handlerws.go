@@ -70,6 +70,8 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 
 	for {
 		_, msgBytes, err := conn.ReadMessage()
+		
+		
 		if err != nil {
 			log.Println("Client disconnected:", clientId)
 			// Broadcast user-left message BEFORE removing the client from the room
@@ -108,5 +110,12 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+func mustJSON(v any) []byte {
+	data, err := json.Marshal(v)
+	if err != nil {
+		panic(err) 
+	}
+	return data
+}
 
 

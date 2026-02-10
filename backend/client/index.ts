@@ -15,15 +15,15 @@ async function main() {
   const roomId = (await rl.question("Enter room id: ")).trim();
 
   if (!roomId) {
-    throw new Error("RoomId is empty");
+    // create th room
   }
-  
+   
   const ws = connectToRoom("ws://localhost:8081/ws", {
     type: "join",
     clientId: id,
     roomId,
   });
-
+  
   // Не закрываем readline, используем его для ввода сообщений
   rl.on("line", (input) => {
     if (ws.readyState === 1) { // WebSocket.OPEN

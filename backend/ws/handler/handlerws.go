@@ -42,14 +42,24 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	var regMsg map[string]string
-	if err := json.Unmarshal(firstMsg, &regMsg); err != nil {
+	var join types.JoinRoomMessage
+	if err := json.Unmarshal(firstMsg, &join); err != nil {
 		log.Println("Failed to unmarshal registration:", err)
 		return
 	}
+	if join.Type != types.TypeJoin {
+		conn.WriteMessage(
+			websocket.TextMessage,
+			mustJSON(types.ErrorMessage{
+				Type:    types.TypeError,
+				Payload: "First message must be join",
+			}),
+		)
+		return
+	}
 
-	clientId := regMsg["clientId"]
-	roomId := regMsg["roomId"]
+	clientId := join.ClientID
+	roomId := join.RoomID
 
 	if clientId == "" || roomId == "" {
 		log.Println("ERROR: Missing clientId or roomId")
@@ -65,13 +75,14 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 	log.Println("✅ Client joined:", clientId, "Room:", roomId)
 	
 	// Send joined confirmation
-	conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"joined","roomId":"`+roomId+`"}`))
-
-
+	joined := types.JoinedMessage{
+		Type: types.TypeJoined,
+		RoomID: roomId,
+	}
+	conn.WriteMessage(websocket.TextMessage, mustJSON(joined))
+	
 	for {
-		_, msgBytes, err := conn.ReadMessage()
-		
-		
+		_, msgBytes, err := conn.ReadMessage()		
 		if err != nil {
 			log.Println("Client disconnected:", clientId)
 			// Broadcast user-left message BEFORE removing the client from the room
@@ -79,6 +90,9 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 			h.RoomManager.LeaveRoom(roomId, client)
 			break
 		}
+		
+		decodedMessage, _ := types.DecodeClientMessage(msgBytes)
+		log.Println(decodedMessage)
 
 		var msg types.Message
 		if err := json.Unmarshal(msgBytes, &msg); err != nil {

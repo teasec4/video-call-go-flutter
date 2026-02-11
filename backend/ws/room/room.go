@@ -63,14 +63,14 @@ func (rm *RoomManager) CreateRoom() string {
 }
 
 
-func (rm *RoomManager) JoinRoom(roomID string, c *types.Client) {
+func (rm *RoomManager) JoinRoom(roomID string, c *types.Client) error {
 	rm.mu.RLock()
 	room, exists := rm.Rooms[roomID]
 	rm.mu.RUnlock()
 
 	if !exists {
 		log.Println("ERROR: Room not found:", roomID)
-		return
+		return fmt.Errorf("room not found")
 	}
 	// TASK: add ERROR for client
 	// return bool, error
@@ -80,6 +80,7 @@ func (rm *RoomManager) JoinRoom(roomID string, c *types.Client) {
 
 	room.Clients[c.Id] = c
 
+	return nil
 }
 
 // LeaveRoom удаляет клиента из комнаты
@@ -115,21 +116,18 @@ func (rm *RoomManager) GetRoom(roomID string) *Room {
 
 // GetClientInRoom находит клиента в комнате по ID
 func (rm *RoomManager) GetClientInRoom(roomID, clientID string) *types.Client {
-	room := rm.GetRoom(roomID)
-	if room == nil {
-		return nil
-	}
-
-	room.mu.RLock()
-	defer room.mu.RUnlock()
-
-	for _, c := range room.Clients {
-		if c.Id == clientID {
-			return c
-		}
-	}
-
-	return nil
+    rm.mu.RLock()
+    room, exists := rm.Rooms[roomID]
+    rm.mu.RUnlock()
+    
+    if !exists {
+        return nil
+    }
+    
+    room.mu.RLock()
+    defer room.mu.RUnlock()
+    
+    return room.Clients[clientID]  // ← О(1) вместо O(n)
 }
 
 func (rm *RoomManager) CloseAllConnection(){
@@ -145,5 +143,15 @@ func (rm *RoomManager) CloseAllConnection(){
 		room.mu.RUnlock()
 	}
 
+}
+
+func (rm *RoomManager) GetMessageHistory(roomId string)([]*types.Message, bool){
+	rm.mu.RLock()
+	defer rm.mu.RUnlock()
+	room, exist := rm.Rooms[roomId]
+	if(!exist){
+		return  nil, true
+	}
+	return room.Messages, false
 }
 

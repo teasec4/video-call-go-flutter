@@ -1,5 +1,8 @@
 # Backend Improvements & Bug Fixes Plan
 
+## Plan
+Реализовать буферизацию (если нужна история для новых юзеров)
+
 ## Critical Issues (Must Fix)
 
 ### 1. **WebRTC Message Handling Not Implemented**

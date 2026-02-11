@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 
+	"callserver/middleware"
 	"callserver/ws/handler"
 	"callserver/ws/room"
 	"fmt"
@@ -25,11 +26,18 @@ func main() {
 	rh := handler.NewRoomHandler(rm)
 	
 	http.HandleFunc("/ws", h.HandleConnection)
+	http.HandleFunc("/room", rh.HandleRoom)
+	
+	// deprecated 
 	http.HandleFunc("/createroom", rh.CreateRoom)
 	http.HandleFunc("/joinroom", rh.JoinRoom)
 
+	// Apply CORS middleware
+	corsHandler := middleware.CorsMiddleware(http.DefaultServeMux)
+
 	server := &http.Server{
-		Addr: "0.0.0.0:8081",
+		Addr:    "0.0.0.0:8081",
+		Handler: corsHandler,
 	}
 
 	// Graceful shutdown

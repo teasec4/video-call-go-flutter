@@ -26,6 +26,29 @@ func NewRoomHandler(rm *room.RoomManager) *RoomHandler{
 	}
 }
 
+func (rh *RoomHandler) HandleRoom(w http.ResponseWriter, r *http.Request){
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	
+	var req CreateRoomJoinRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil{
+		fmt.Println("❌ Decode error:", err)
+		http.Error(w, "invalid json body", http.StatusBadRequest)
+		return
+	}
+	if(req.RoomId == ""){
+		rh.CreateRoom(w, r)
+	} else {
+		rh.JoinRoom(w, r)
+	}
+}
+
 func (rh *RoomHandler) CreateRoom(w http.ResponseWriter, r *http.Request){
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")

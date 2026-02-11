@@ -90,12 +90,17 @@ func (rh *RoomHandler) HandleRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check Content-Length before reading body
+	if r.ContentLength == 0 {
+		http.Error(w, "request body is required", http.StatusBadRequest)
+		return
+	}
+
 	// Limit request body size
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
 
 	var req CreateRoomJoinRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		fmt.Println("❌ Decode error:", err)
 		http.Error(w, "invalid json body", http.StatusBadRequest)
 		return
 	}
@@ -116,28 +121,28 @@ func (rh *RoomHandler) CreateRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Println("✅ Request received:", r.Method, r.URL.Path)
+	// Check Content-Length before reading body
+	if r.ContentLength == 0 {
+		http.Error(w, "request body is required", http.StatusBadRequest)
+		return
+	}
 
 	// Limit request body size
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
 
 	var req CreateRoomRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		fmt.Println("❌ Decode error:", err)
 		http.Error(w, "invalid json body", http.StatusBadRequest)
 		return
 	}
 
 	// Validate clientId
 	if err := validateClientId(req.ClientId); err != nil {
-		fmt.Println("❌ Validation error:", err)
 		http.Error(w, fmt.Sprintf("invalid clientId: %v", err), http.StatusBadRequest)
 		return
 	}
 
 	roomId := rh.RM.CreateRoom()
-
-	fmt.Println("✅ Room created:", roomId)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -154,28 +159,29 @@ func (rh *RoomHandler) JoinRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Println("✅ Request received:", r.Method, r.URL.Path)
+	// Check Content-Length before reading body
+	if r.ContentLength == 0 {
+		http.Error(w, "request body is required", http.StatusBadRequest)
+		return
+	}
 
 	// Limit request body size
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
 
 	var req CreateRoomJoinRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		fmt.Println("❌ Decode error:", err)
 		http.Error(w, "invalid json body", http.StatusBadRequest)
 		return
 	}
 
 	// Validate clientId
 	if err := validateClientId(req.ClientId); err != nil {
-		fmt.Println("❌ Validation error:", err)
 		http.Error(w, fmt.Sprintf("invalid clientId: %v", err), http.StatusBadRequest)
 		return
 	}
 
 	// Validate roomId
 	if err := validateRoomId(req.RoomId); err != nil {
-		fmt.Println("❌ Validation error:", err)
 		http.Error(w, fmt.Sprintf("invalid roomId: %v", err), http.StatusBadRequest)
 		return
 	}
@@ -185,8 +191,6 @@ func (rh *RoomHandler) JoinRoom(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "room not found", http.StatusNotFound)
 		return
 	}
-
-	fmt.Println("✅ Joined room:", room.ID)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

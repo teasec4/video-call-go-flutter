@@ -57,6 +57,7 @@ func (rm *RoomManager) BroadcastToRoom(roomId string, msg []byte) {
 }
 
 
+// CreateRoom creates a new room with a unique UUID.
 func (rm *RoomManager) CreateRoom() string {
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
@@ -67,8 +68,8 @@ func (rm *RoomManager) CreateRoom() string {
 		Clients: map[string]*types.Client{},
 		Messages: []*types.Message{},
 	}
-	
-	fmt.Println("✅ Created Room:", roomID)
+
+	log.Printf("room_created room_id=%s", roomID)
 	return roomID
 }
 
@@ -80,7 +81,7 @@ func (rm *RoomManager) JoinRoom(roomID string, c *types.Client) error {
 	rm.mu.RUnlock()
 
 	if !exists {
-		log.Println("ERROR: Room not found:", roomID)
+		log.Printf("room_not_found room_id=%s", roomID)
 		return fmt.Errorf("room not found")
 	}
 
@@ -112,7 +113,7 @@ func (rm *RoomManager) LeaveRoom(roomID string, c *types.Client) {
 		rm.mu.Lock()
 		delete(rm.Rooms, roomID)
 		rm.mu.Unlock()
-		fmt.Println("🗑️ Room deleted:", roomID)
+		log.Printf("room_deleted room_id=%s", roomID)
 	}
 }
 
@@ -153,7 +154,7 @@ func (rm *RoomManager) CloseAllConnection() {
 		room.mu.RLock()
 		for _, client := range room.Clients {
 			client.Conn.Close()
-			fmt.Println("Close Connection with:", client.Id)
+			log.Printf("connection_closed client_id=%s room_id=%s", client.Id, room.ID)
 		}
 		room.mu.RUnlock()
 	}

@@ -2,17 +2,16 @@ package main
 
 import (
 	"context"
-
-	"callserver/middleware"
-	"callserver/ws/handler"
-	"callserver/ws/room"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"callserver/middleware"
+	"callserver/ws/handler"
+	"callserver/ws/room"
 )
 
 func main() {
@@ -54,6 +53,6 @@ func main() {
 		server.Shutdown(shutdownCtx)
 	}()
 
-	fmt.Println("Server starting on 0.0.0.0:8081")
+	log.Printf("server_started addr=%s", server.Addr)
 	log.Fatal(server.ListenAndServe())
 }

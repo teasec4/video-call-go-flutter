@@ -97,7 +97,7 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 	// Validate clientId format
 	if err := validateClientId(clientId); err != nil {
 		errMsg := fmt.Sprintf("invalid clientId: %v", err)
-		log.Println("Validation error:", errMsg)
+		log.Printf("validation_error client_id=%s error=%v", clientId, err)
 		sendError(conn, errMsg)
 		return
 	}
@@ -105,7 +105,7 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 	// Validate roomId format
 	if err := validateRoomId(roomId); err != nil {
 		errMsg := fmt.Sprintf("invalid roomId: %v", err)
-		log.Println("Validation error:", errMsg)
+		log.Printf("validation_error room_id=%s error=%v", roomId, err)
 		sendError(conn, errMsg)
 		return
 	}
@@ -115,15 +115,15 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 		Conn: conn,
 	}
 	h.RoomManager.JoinRoom(roomId, client)
-	log.Println("✅ Client joined:", clientId, "Room:", roomId)
-	
+	log.Printf("client_joined client_id=%s room_id=%s remote_addr=%s", clientId, roomId, r.RemoteAddr)
+
 	// Send joined confirmation
 	joined := types.Message{
 		Type:   types.TypeJoined,
 		RoomID: roomId,
 	}
 	if err := conn.WriteMessage(websocket.TextMessage, mustJSON(joined)); err != nil {
-		log.Println("Failed to send joined message:", err)
+		log.Printf("write_error client_id=%s error=%v", clientId, err)
 		conn.Close()
 		return
 	}
@@ -134,7 +134,7 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 
 		_, msgBytes, err := conn.ReadMessage()
 		if err != nil {
-			log.Println("Client disconnected:", clientId)
+			log.Printf("client_disconnected client_id=%s room_id=%s error=%v", clientId, roomId, err)
 			// Broadcast user-left message BEFORE removing the client from the room
 			leftMsg := types.Message{
 				Type: types.TypeUserLeft,
@@ -147,14 +147,14 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 
 		var msg types.Message
 		if err := json.Unmarshal(msgBytes, &msg); err != nil {
-			log.Println("Failed to unmarshal message:", err)
+			log.Printf("unmarshal_error client_id=%s error=%v", clientId, err)
 			continue
 		}
 
 		msg.From = clientId
 
 		if err := msg.Validate(); err != nil {
-			log.Println("Validation error:", err)
+			log.Printf("validation_error client_id=%s message_type=%s error=%v", clientId, msg.Type, err)
 			continue
 		}
 

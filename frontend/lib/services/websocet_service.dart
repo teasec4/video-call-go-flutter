@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 class WebsocetService {
@@ -9,19 +10,23 @@ class WebsocetService {
 
   Future<void> connect(
     String url,
+    Map<String, dynamic> handShakeMessage,
     Function(Map<String, dynamic>) onMessage,
   ) async {
-    _isConnected = false;
     try {
       _channel = WebSocketChannel.connect(Uri.parse(url));
       _onMessage = onMessage;
+      
+      // Ждём, пока соединение установится
+      await _channel.ready;
       _isConnected = true;
+      send(handShakeMessage);
 
       _channel.stream.listen(
         (message) {
           try {
             late Map<String, dynamic> data;
-            
+
             // Если message уже Map (на web это может быть)
             if (message is Map<String, dynamic>) {
               data = message;
@@ -32,7 +37,7 @@ class WebsocetService {
               print("Unknown message type: ${message.runtimeType}");
               return;
             }
-            
+
             _onMessage(data);
           } catch (e) {
             print("Error parsing data: $e");
@@ -44,7 +49,6 @@ class WebsocetService {
         },
         onDone: () {
           disconnect();
-          
         },
       );
     } catch (e) {
@@ -58,9 +62,12 @@ class WebsocetService {
     _isConnected = false;
     _channel.sink.close();
   }
-  
+
   void send(Map<String, dynamic> data) {
-    if(!_isConnected){throw Exception('WebSocket not connected');}
+    if (!_isConnected) {
+      throw Exception('WebSocket not connected');
+    }
     _channel.sink.add(jsonEncode(data));
   }
+
 }

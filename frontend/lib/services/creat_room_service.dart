@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:frontend/models/decode_message.dart';
 import 'package:frontend/models/message.dart';
 import 'package:frontend/services/websocet_service.dart';
 import 'package:http/http.dart' as http;
@@ -9,8 +10,8 @@ class RoomManager {
   final String userId;
   final WebsocetService websocetService;
 
-  List<Message> messages = [];
-  Function(Message)? onMessageReceived;
+  List<BaseMessage> messages = [];
+  Function(BaseMessage)? onMessageReceived;
 
   RoomManager({
     required this.url,
@@ -21,7 +22,8 @@ class RoomManager {
 
   late String _currentRoomId;
 
-  Future<String> createRoom() async {
+  /// Создаёт новую комнату через HTTP и подключается к WebSocket
+  Future<String> createAndJoinRoom() async {
     try {
       print('Creating room at: $url/createroom');
 
@@ -31,13 +33,13 @@ class RoomManager {
         body: jsonEncode({'clientId': userId}),
       );
 
-      print('Response status: ${response.statusCode}');
-      print('Response body: "${response.body}"');
-
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = jsonDecode(response.body);
-        print('Room created successfully: $data');
         _currentRoomId = data['roomId'];
+        print('✅ Room created: $_currentRoomId');
+        
+        // Сразу подключаемся к WebSocket
+        await connectToWs();
         return _currentRoomId;
       } else {
         throw Exception('Failed to create room: ${response.statusCode}');
@@ -48,7 +50,8 @@ class RoomManager {
     }
   }
 
-  Future<void> joinRoom(String roomId) async {
+  /// Присоединяется к существующей комнате через HTTP и подключается к WebSocket
+  Future<void> joinExistingRoom(String roomId) async {
     try {
       print('Joining room at: $url/joinroom');
 
@@ -58,40 +61,68 @@ class RoomManager {
         body: jsonEncode({'roomId': roomId, 'clientId': userId}),
       );
 
-      print('Response status: ${response.statusCode}');
-      print('Response body: "${response.body}"');
-
       if (response.statusCode == 200 || response.statusCode == 201) {
-        final data = jsonDecode(response.body);
-        print('Room joined successfully: $data');
         _currentRoomId = roomId;
+        print('✅ Room joined: $_currentRoomId');
+        
+        // Сразу подключаемся к WebSocket
+        await connectToWs();
       } else {
-        print('Failed to join room: ${response.statusCode}');
+        throw Exception('Failed to join room: ${response.statusCode}');
       }
     } catch (e) {
       print('Error joining room: $e');
+      rethrow;
     }
   }
 
+  /// Подключается к WebSocket и отправляет первое сообщение join
   Future<void> connectToWs() async {
     try {
-      await websocetService.connect(wsUrl, (data) {
+      final roomId = _currentRoomId;
+      if (roomId.isEmpty) {
+        throw Exception('Room ID is not set');
+      }
+
+      final joinMessage = JoinRoomMessage(
+        clientId: userId,
+        roomId: roomId,
+      );
+
+      await websocetService.connect(wsUrl, joinMessage.toJson(), (data) {
         print('Received from WS: $data');
-        final message = Message.fromJson(data);
-        
-        if (onMessageReceived != null) {
-          onMessageReceived!(message);
+        try {
+          final message = decodeMessage(data);
+          if (onMessageReceived != null) {
+            onMessageReceived!(message);
+          }
+        } catch (e) {
+          print('Error decoding message: $e');
         }
       });
 
-      // Даем время на подключение
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      websocetService.send({'clientId': userId, 'roomId': _currentRoomId});
-      print('✅ Connected to WebSocket and sent registration');
+      print('✅ Connected to WebSocket');
     } catch (e) {
       print('Error connecting to WebSocket: $e');
       rethrow;
     }
+  }
+
+  /// Отправляет чат-сообщение в комнату
+  void sendChatMessage(String payload) {
+    try {
+      final message = ChatMessage(
+        from: userId,
+        payload: payload,
+      );
+      websocetService.send(message.toJson());
+    } catch (e) {
+      print('Error sending chat message: $e');
+    }
+  }
+
+  /// Отключается от WebSocket и очищает ресурсы
+  void disconnect() {
+    websocetService.disconnect();
   }
 }

@@ -16,21 +16,21 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
     InitializeRoomEvent event,
     Emitter<RoomState> emit,
   ) async {
-    // Emit loading state while establishing WebSocket connection
     emit(RoomLoading());
-    
+
     try {
-      print('RoomBloc: Connecting to WebSocket...');
-      await roomManager.connectToWs();
-      print('RoomBloc: Connected to WebSocket');
+      print('RoomBloc: Setting up message callback...');
       
-      // Set up callback for incoming messages
+      // Set up callback for incoming messages BEFORE connecting
       roomManager.onMessageReceived = (message) {
         print('RoomBloc: Received message: $message');
         add(MessageReceivedEvent(message));
       };
-      
-      print('RoomBloc: Emitting RoomInitialized');
+
+      print('RoomBloc: Joining room...');
+      await roomManager.joinExistingRoom(event.roomId);
+      print('RoomBloc: Room joined and WebSocket connected');
+
       // Emit initialized state with room ID and initial messages
       emit(RoomInitialized(
         roomId: event.roomId,
@@ -64,15 +64,11 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
   ) async {
     try {
       print('RoomBloc: Sending message: ${event.message}');
-      
+
       // Send message through WebSocket
       // Do not emit state after sending - UI updates only when MessageReceivedEvent arrives
-      roomManager.websocetService.send({
-        'type': 'chat',
-        'from': roomManager.userId,
-        'payload': event.message,
-      });
-      
+      roomManager.sendChatMessage(event.message);
+
       print('RoomBloc: Message sent successfully');
     } catch (e) {
       print('RoomBloc: Error sending message: $e');

@@ -42,31 +42,25 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	var join types.JoinRoomMessage
+	var join types.Message
 	if err := json.Unmarshal(firstMsg, &join); err != nil {
 		log.Println("Failed to unmarshal registration:", err)
 		return
 	}
 	if join.Type != types.TypeJoin {
-		conn.WriteMessage(
-			websocket.TextMessage,
-			mustJSON(types.ErrorMessage{
-				Type:    types.TypeError,
-				Payload: "First message must be join",
-			}),
-		)
+		sendError(conn, "First message must be join")
+		return
+	}
+
+	if err := join.Validate(); err != nil {
+		log.Println("Validation error:", err)
+		sendError(conn, err.Error())
 		return
 	}
 
 	clientId := join.ClientID
 	roomId := join.RoomID
 
-	if clientId == "" || roomId == "" {
-		log.Println("ERROR: Missing clientId or roomId")
-		conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","payload":"Missing clientId or roomId"}`))
-		return
-	}
-	
 	client := &types.Client{
 		Id:   clientId,
 		Conn: conn,
@@ -75,8 +69,8 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 	log.Println("✅ Client joined:", clientId, "Room:", roomId)
 	
 	// Send joined confirmation
-	joined := types.JoinedMessage{
-		Type: types.TypeJoined,
+	joined := types.Message{
+		Type:   types.TypeJoined,
 		RoomID: roomId,
 	}
 	conn.WriteMessage(websocket.TextMessage, mustJSON(joined))
@@ -86,13 +80,14 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 		if err != nil {
 			log.Println("Client disconnected:", clientId)
 			// Broadcast user-left message BEFORE removing the client from the room
-			h.RoomManager.BroadcastToRoom(roomId, []byte(`{"type":"user-left","from":"`+clientId+`"}`))
+			leftMsg := types.Message{
+				Type: types.TypeUserLeft,
+				From: clientId,
+			}
+			h.RoomManager.BroadcastToRoom(roomId, mustJSON(leftMsg))
 			h.RoomManager.LeaveRoom(roomId, client)
 			break
 		}
-		
-		decodedMessage, _ := types.DecodeClientMessage(msgBytes)
-		log.Println(decodedMessage)
 
 		var msg types.Message
 		if err := json.Unmarshal(msgBytes, &msg); err != nil {
@@ -108,20 +103,24 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 		}
 
 		switch msg.Type {
-		case "chat":
-		response := map[string]interface{}{
-			"type":    "chat",
-			"from":    clientId,
-			"payload": msg.Payload,
-		}
-		respBytes, _ := json.Marshal(response)
-		h.RoomManager.BroadcastToRoom(roomId, respBytes)
-
-
-		case "offer", "answer", "ice-candidate":
-			// for future WebRTC 
+		case types.TypeChat:
+			// Echo back with from field
+			response := types.Message{
+				Type:    types.TypeChat,
+				From:    clientId,
+				Payload: msg.Payload,
+			}
+			h.RoomManager.BroadcastToRoom(roomId, mustJSON(response))
 		}
 	}
+}
+
+func sendError(conn *websocket.Conn, errMsg string) {
+	msg := types.Message{
+		Type:    types.TypeError,
+		Payload: []byte(`"` + errMsg + `"`),
+	}
+	conn.WriteMessage(websocket.TextMessage, mustJSON(msg))
 }
 
 func mustJSON(v any) []byte {

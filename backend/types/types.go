@@ -15,11 +15,24 @@ type Client struct {
 	Id     string
 }
 
+type MessageType string
+
+const (
+	TypeJoin      MessageType = "join"
+	TypeJoined    MessageType = "joined"
+	TypeError     MessageType = "error"
+	TypeChat      MessageType = "chat"
+	TypeUserLeft  MessageType = "user-left"
+)
+
+// Единая структура сообщения для всех типов
 type Message struct {
-	Type    string          `json:"type"`
-	From    string          `json:"from"`
+	Type    MessageType     `json:"type"`
+	From    string          `json:"from,omitempty"`
 	To      string          `json:"to,omitempty"`
-	Payload json.RawMessage `json:"payload"`
+	ClientID string         `json:"clientId,omitempty"` // Для join сообщений
+	RoomID   string         `json:"roomId,omitempty"`    // Для join/joined сообщений
+	Payload json.RawMessage `json:"payload,omitempty"`
 }
 
 func (m *Message) Validate() error {
@@ -28,79 +41,19 @@ func (m *Message) Validate() error {
 	}
 
 	switch m.Type {
-	case "chat":
+	case TypeJoin:
+		if m.ClientID == "" || m.RoomID == "" {
+			return fmt.Errorf("join requires clientId and roomId")
+		}
+	case TypeChat:
 		if len(m.Payload) == 0 {
 			return fmt.Errorf("chat message requires payload")
 		}
-	case "offer", "answer", "ice-candidate":
-		if m.To == "" {
-			return fmt.Errorf("%s requires 'to' field", m.Type)
-		}
-		if len(m.Payload) == 0 {
-			return fmt.Errorf("%s requires payload", m.Type)
-		}
-	case "create-room", "join-room", "leave-room", "list-peers":
-		// no validation needed
+	case TypeJoined, TypeError:
+		// No additional validation needed
 	default:
 		return fmt.Errorf("unknown message type: %s", m.Type)
 	}
 
 	return nil
-}
-
-type MessageType string
-
-const(
-	TypeJoin MessageType = "join"
-	TypeJoined MessageType = "joined"
-	TypeError  MessageType = "error"
-	TypeChat   MessageType = "chat"
-)
-
-type BaseMessage struct{
-	Type MessageType `json:"type"`
-}
-
-type JoinRoomMessage struct {
-	Type     MessageType `json:"type"`
-	ClientID string      `json:"clientId"`
-	RoomID   string      `json:"roomId"`
-}
-
-type JoinedMessage struct {
-	Type   MessageType `json:"type"`
-	RoomID string      `json:"roomId"`
-}
-
-type ChatMessage struct {
-	Type    MessageType      `json:"type"`
-	From    string           `json:"from"`
-	Payload json.RawMessage  `json:"payload"`
-}
-
-type ErrorMessage struct {
-	Type    MessageType `json:"type"`
-	Payload string      `json:"payload"`
-}
-
-func DecodeClientMessage(data []byte) (any, error) {
-	var base BaseMessage
-	if err := json.Unmarshal(data, &base); err != nil {
-		return nil, err
-	}
-
-	switch base.Type {
-	case TypeJoin:
-		var msg JoinRoomMessage
-		err := json.Unmarshal(data, &msg)
-		return msg, err
-
-	case TypeChat:
-		var msg ChatMessage
-		err := json.Unmarshal(data, &msg)
-		return msg, err
-
-	default:
-		return nil, fmt.Errorf("unknown message type: %s", base.Type)
-	}
 }

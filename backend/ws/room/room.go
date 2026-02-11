@@ -28,20 +28,30 @@ func NewRoomManager() *RoomManager {
 	}
 }
 
-func (rm* RoomManager) BroadcastToRoom(roomId string, msg []byte){
+// BroadcastToRoom sends a message to all clients in the room.
+// If a write fails, the connection is closed to prevent dead connections.
+func (rm *RoomManager) BroadcastToRoom(roomId string, msg []byte) {
 	rm.mu.RLock()
 	room, exists := rm.Rooms[roomId]
 	rm.mu.RUnlock()
-	
+
 	if !exists {
 		return
 	}
-	
+
+	// Get snapshot of clients while holding lock
 	room.mu.RLock()
-	defer room.mu.RUnlock()
-	for _, c := range room.Clients{
+	clients := make([]*types.Client, 0, len(room.Clients))
+	for _, c := range room.Clients {
+		clients = append(clients, c)
+	}
+	room.mu.RUnlock()
+
+	// Send messages without holding lock to prevent deadlocks
+	for _, c := range clients {
 		if err := c.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-			log.Println("Broadcast error:", err)
+			log.Println("Write error for client", c.Id, ":", err)
+			c.Conn.Close()
 		}
 	}
 }
@@ -63,6 +73,7 @@ func (rm *RoomManager) CreateRoom() string {
 }
 
 
+// JoinRoom adds a client to the room.
 func (rm *RoomManager) JoinRoom(roomID string, c *types.Client) error {
 	rm.mu.RLock()
 	room, exists := rm.Rooms[roomID]
@@ -72,8 +83,6 @@ func (rm *RoomManager) JoinRoom(roomID string, c *types.Client) error {
 		log.Println("ERROR: Room not found:", roomID)
 		return fmt.Errorf("room not found")
 	}
-	// TASK: add ERROR for client
-	// return bool, error
 
 	room.mu.Lock()
 	defer room.mu.Unlock()
@@ -83,7 +92,7 @@ func (rm *RoomManager) JoinRoom(roomID string, c *types.Client) error {
 	return nil
 }
 
-// LeaveRoom удаляет клиента из комнаты
+// LeaveRoom removes a client from the room and deletes the room if empty.
 func (rm *RoomManager) LeaveRoom(roomID string, c *types.Client) {
 	rm.mu.Lock()
 	room, exists := rm.Rooms[roomID]
@@ -94,11 +103,11 @@ func (rm *RoomManager) LeaveRoom(roomID string, c *types.Client) {
 	}
 
 	room.mu.Lock()
-	delete(room.Clients, c.Id)  // ← Удаляем из map
+	delete(room.Clients, c.Id)
 	isEmpty := len(room.Clients) == 0
 	room.mu.Unlock()
 
-	// Удаляем комнату, если она пуста
+	// Delete room if empty
 	if isEmpty {
 		rm.mu.Lock()
 		delete(rm.Rooms, roomID)
@@ -107,7 +116,7 @@ func (rm *RoomManager) LeaveRoom(roomID string, c *types.Client) {
 	}
 }
 
-// GetRoom возвращает комнату по ID
+// GetRoom returns a room by ID. Returns nil if not found.
 func (rm *RoomManager) GetRoom(roomID string) *Room {
 	rm.mu.RLock()
 	defer rm.mu.RUnlock()
@@ -130,19 +139,24 @@ func (rm *RoomManager) GetClientInRoom(roomID, clientID string) *types.Client {
     return room.Clients[clientID]  // ← О(1) вместо O(n)
 }
 
-func (rm *RoomManager) CloseAllConnection(){
+// CloseAllConnection closes all client connections and clears the room manager.
+func (rm *RoomManager) CloseAllConnection() {
 	rm.mu.RLock()
-	defer rm.mu.RUnlock()
-	
-	for _, room := range rm.Rooms{
+	rooms := make([]*Room, 0, len(rm.Rooms))
+	for _, room := range rm.Rooms {
+		rooms = append(rooms, room)
+	}
+	rm.mu.RUnlock()
+
+	// Close connections outside of lock to prevent deadlocks
+	for _, room := range rooms {
 		room.mu.RLock()
-		for _, client := range room.Clients{
+		for _, client := range room.Clients {
 			client.Conn.Close()
-			fmt.Println("Close Conncetion with: ", client.Id)
+			fmt.Println("Close Connection with:", client.Id)
 		}
 		room.mu.RUnlock()
 	}
-
 }
 
 func (rm *RoomManager) GetMessageHistory(roomId string)([]*types.Message, bool){

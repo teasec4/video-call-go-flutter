@@ -8,8 +8,8 @@ import (
 )
 
 type Client struct {
-	Conn   *websocket.Conn
-	Id     string
+	Conn *websocket.Conn
+	Id   string
 }
 
 // Message type for EVERYTHING throw WS

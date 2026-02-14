@@ -52,6 +52,8 @@ func (rm *RoomManager) BroadcastToRoom(roomId string, msg []byte) {
 		if err := c.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 			log.Println("Write error for client", c.Id, ":", err)
 			c.Conn.Close()
+			// Remove client from room on write error
+			rm.LeaveRoom(roomId, c)
 		}
 	}
 }
@@ -95,12 +97,13 @@ func (rm *RoomManager) JoinRoom(roomID string, c *types.Client) error {
 
 // LeaveRoom removes a client from the room and deletes the room if empty.
 func (rm *RoomManager) LeaveRoom(roomID string, c *types.Client) {
-	rm.mu.Lock()
-	room, error := rm.GetRoom(roomID)
-	if error != nil{
-		return 
+	rm.mu.RLock()
+	room, exists := rm.Rooms[roomID]
+	rm.mu.RUnlock()
+
+	if !exists {
+		return
 	}
-	rm.mu.Unlock()
 
 	room.mu.Lock()
 	delete(room.Clients, c.Id)

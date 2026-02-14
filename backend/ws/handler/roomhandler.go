@@ -69,13 +69,8 @@ func validateRoomId(roomId string) error {
 		return fmt.Errorf("roomId is required")
 	}
 
-	if len(roomId) > maxRoomIdLen {
-		return fmt.Errorf("roomId too long (max %d characters)", maxRoomIdLen)
-	}
-
-	// RoomId should be a valid UUID
-	if !uuidPattern.MatchString(strings.ToLower(roomId)) {
-		return fmt.Errorf("roomId must be a valid UUID")
+	if len(roomId) > 256 {
+		return fmt.Errorf("roomId too long (max 256 characters)")
 	}
 
 	return nil

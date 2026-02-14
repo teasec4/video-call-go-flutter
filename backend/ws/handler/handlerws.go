@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -28,13 +27,7 @@ func NewHandlerWS(rm *room.RoomManager) *HandlerWebSocket {
 	}
 }
 
-// WebSocket timeout constants
-const (
-	readTimeout  = 60 * time.Second
-	writeTimeout = 10 * time.Second
-	pongWait     = 60 * time.Second
-	pingInterval = (pongWait * 9) / 10
-)
+// No timeouts for WebSocket connections - allow long-lived connections
 
 func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Request) {
 	log.Println("WebSocket request from:", r.RemoteAddr, "Host:", r.Header.Get("Host"))
@@ -45,28 +38,12 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	defer conn.Close()
+	
+	ctx := r.Context()
 
-	// Set connection timeouts
-	conn.SetReadDeadline(time.Now().Add(readTimeout))
-	conn.SetWriteDeadline(time.Now().Add(writeTimeout))
-	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(readTimeout))
-		return nil
-	})
+	// Don't set any timeouts - allow long-lived connections
 
-	// Start ping ticker to keep connection alive
-	ticker := time.NewTicker(pingInterval)
-	defer ticker.Stop()
 
-	// Goroutine for sending pings
-	go func() {
-		for range ticker.C {
-			conn.SetWriteDeadline(time.Now().Add(writeTimeout))
-			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				return
-			}
-		}
-	}()
 
 	// Read first message (join registration)
 	_, firstMsg, err := conn.ReadMessage()
@@ -124,6 +101,7 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 	}
 	joinedBytes := mustJSON(joined)
 	log.Printf("📤 Sending joined message: %s", string(joinedBytes))
+	
 	if err := conn.WriteMessage(websocket.TextMessage, joinedBytes); err != nil {
 		log.Printf("write_error client_id=%s error=%v", clientId, err)
 		conn.Close()
@@ -131,8 +109,14 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 	}
 	
 	for {
-		// Update read deadline on each message
-		conn.SetReadDeadline(time.Now().Add(readTimeout))
+		// Check if context is cancelled (server shutting down)
+		select {
+		case <-ctx.Done():
+			log.Printf("client_disconnected (shutdown) client_id=%s room_id=%s", clientId, roomId)
+			h.RoomManager.LeaveRoom(roomId, client)
+			return
+		default:
+		}
 
 		_, msgBytes, err := conn.ReadMessage()
 		if err != nil {
@@ -162,8 +146,7 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 
 		switch msg.Type {
 		case types.TypeChat:
-			// Update write deadline before sending
-			conn.SetWriteDeadline(time.Now().Add(writeTimeout))
+			fmt.Printf("📨 Received chat from %s: %s\n", clientId, string(msg.Payload))
 			// Echo back with from field
 			response := types.Message{
 				Type:    types.TypeChat,
@@ -171,6 +154,7 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 				Payload: msg.Payload,
 			}
 			respBytes := mustJSON(response)
+			fmt.Printf("📤 Broadcasting to room %s: %s\n", roomId, string(respBytes))
 			h.RoomManager.BroadcastToRoom(roomId, respBytes)
 		}
 	}

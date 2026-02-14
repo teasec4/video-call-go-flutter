@@ -53,13 +53,16 @@ class RoomManager {
   /// Присоединяется к существующей комнате через HTTP и подключается к WebSocket
   Future<void> joinExistingRoom(String roomId) async {
     try {
-      print('Joining room at: $url/joinroom');
+      print('Joining room at: $url/room');
+      print('DEBUG: roomId=$roomId, clientId=$userId');
 
       final response = await http.post(
         Uri.parse('$url/room'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'roomId': roomId, 'clientId': userId}),
       );
+
+      print('DEBUG: Response status=${response.statusCode}, body=${response.body}');
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         _currentRoomId = roomId;
@@ -68,7 +71,7 @@ class RoomManager {
         // Сразу подключаемся к WebSocket
         await connectToWs();
       } else {
-        throw Exception('Failed to join room: ${response.statusCode}');
+        throw Exception('Failed to join room: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
       print('Error joining room: $e');
@@ -113,8 +116,9 @@ class RoomManager {
     try {
       final message = ChatMessage(from: userId, payload: payload);
       websocetService.send(message.toJson());
+      print('✅ Chat message sent: $payload');
     } catch (e) {
-      print('Error sending chat message: $e');
+      print('❌ Error sending chat message: $e');
     }
   }
 

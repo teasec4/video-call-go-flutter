@@ -4,6 +4,7 @@ import 'package:frontend/bloc/room_bloc.dart';
 import 'package:frontend/bloc/room_event.dart';
 import 'package:frontend/bloc/room_state.dart';
 import 'package:frontend/di/service_locator.dart';
+import 'package:frontend/models/message.dart';
 import 'package:frontend/services/creat_room_service.dart';
 
 class CallScreen extends StatefulWidget {
@@ -51,6 +52,20 @@ class _CallScreenState extends State<CallScreen> {
     }
   }
 
+  Widget _buildMessageWidget(BaseMessage msg) {
+    if (msg is ChatMessage) {
+      return Text('${msg.from}: ${msg.payload}');
+    } else if (msg is JoinedMessage) {
+      return Text('User joined room (${msg.roomId})');
+    } else if (msg is ErrorMessage) {
+      return Text('Error: ${msg.payload}');
+    } else if (msg is UserLeftMessage) {
+      return Text('${msg.from} left the room');
+    } else {
+      return Text('Unknown message: ${msg.toString()}');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -74,7 +89,7 @@ class _CallScreenState extends State<CallScreen> {
                       final msg = messages[index];
                       return Padding(
                         padding: const EdgeInsets.all(8.0),
-                        child: Text('${msg.from}: ${msg.payload}'),
+                        child: _buildMessageWidget(msg),
                       );
                     },
                   ),

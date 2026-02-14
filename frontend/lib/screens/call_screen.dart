@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:frontend/bloc/room_bloc.dart';
 import 'package:frontend/bloc/room_event.dart';
 import 'package:frontend/bloc/room_state.dart';
 import 'package:frontend/di/service_locator.dart';
 import 'package:frontend/models/message.dart';
 import 'package:frontend/services/creat_room_service.dart';
+import 'package:frontend/services/media_service.dart';
 
 class CallScreen extends StatefulWidget {
   final String roomId;
@@ -20,13 +22,29 @@ class _CallScreenState extends State<CallScreen> {
   late String roomId;
   late TextEditingController _chatSendTextController;
   late RoomBloc _roomBloc;
+  bool _isChatExpanded = true;
+  late RTCVideoRenderer _localRenderer;
+
+  Future<void> initLocalRenderer() async {
+    _localRenderer = RTCVideoRenderer();
+    await getIt<MediaService>().initialize();
+    await _localRenderer.initialize();
+
+    _localRenderer.srcObject = getIt<MediaService>().localStream;
+  }
 
   @override
   void initState() {
     super.initState();
     roomId = widget.roomId;
+
+    // init Local Stream and Render
+    initLocalRenderer();
+
+    // chat controller
     _chatSendTextController = TextEditingController();
 
+    // init Bloc for room Manager
     _roomBloc = RoomBloc(roomManager: getIt<RoomManager>());
     _roomBloc.add(InitializeRoomEvent(widget.roomId));
   }
@@ -35,13 +53,15 @@ class _CallScreenState extends State<CallScreen> {
   void dispose() {
     _chatSendTextController.dispose();
     _roomBloc.close();
+    _localRenderer.dispose();
+    getIt<MediaService>().dispose();
     super.dispose();
   }
 
   void _sendMessage() {
     final msg = _chatSendTextController.text;
     print('DEBUG: _sendMessage called, text: "$msg"');
-    
+
     if (msg.isNotEmpty) {
       print('DEBUG: Adding SendMessageEvent to Bloc');
       _roomBloc.add(SendMessageEvent(msg));
@@ -66,6 +86,136 @@ class _CallScreenState extends State<CallScreen> {
     }
   }
 
+  Widget _buildRemoteStreamWidget(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final videoHeight = _isChatExpanded ? screenHeight * 0.5 : screenHeight * 0.85;
+    
+    return Container(
+      width: double.infinity,
+      height: videoHeight,
+      decoration: BoxDecoration(
+        color: Colors.black87,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Stack(
+        children: [
+          // Remote stream placeholder
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.videocam, size: 64, color: Colors.white54),
+                SizedBox(height: 16),
+                Text(
+                  'Remote Stream',
+                  style: TextStyle(color: Colors.white54, fontSize: 16),
+                ),
+              ],
+            ),
+          ),
+          // Local stream in corner
+          Positioned(
+            bottom: 12,
+            right: 12,
+            child: Container(
+              width: 120,
+              height: 160,
+              decoration: BoxDecoration(
+                color: Colors.grey[800],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.white24),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: RTCVideoView(
+                  _localRenderer,
+                  objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChatWidget(List<BaseMessage> messages) {
+    return Container(
+      color: Colors.grey[100],
+      child: Column(
+        children: [
+          // Chat header with toggle button
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Chat',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                IconButton(
+                  icon: Icon(
+                    _isChatExpanded ? Icons.expand_more : Icons.expand_less,
+                    size: 20,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _isChatExpanded = !_isChatExpanded;
+                    });
+                  },
+                  padding: EdgeInsets.zero,
+                  constraints: BoxConstraints(),
+                ),
+              ],
+            ),
+          ),
+          // Chat messages (show only if expanded)
+          if (_isChatExpanded)
+            Expanded(
+              child: ListView.builder(
+                itemCount: messages.length,
+                itemBuilder: (context, index) {
+                  final msg = messages[index];
+                  return Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: _buildMessageWidget(msg),
+                  );
+                },
+              ),
+            )
+          else
+            SizedBox(height: 0),
+          // Message input
+          if (_isChatExpanded)
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _chatSendTextController,
+                      decoration: InputDecoration(
+                        hintText: "input message",
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        contentPadding: const EdgeInsets.all(12),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.send),
+                    onPressed: _sendMessage,
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -79,45 +229,22 @@ class _CallScreenState extends State<CallScreen> {
 
           if (state is RoomInitialized || state is MessageAdded) {
             final messages = (state as dynamic).messages;
-            
-            return Column(
-              children: [
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: messages.length,
-                    itemBuilder: (context, index) {
-                      final msg = messages[index];
-                      return Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: _buildMessageWidget(msg),
-                      );
-                    },
-                  ),
+
+            return Container(
+              padding: EdgeInsets.all(8),
+              child:
+                Column(
+                  
+                  children: [
+                    // Remote stream widget
+                    _buildRemoteStreamWidget(context),
+                    
+                    // chat widget 
+                    Expanded(child: _buildChatWidget(messages)),
+                  ],
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _chatSendTextController,
-                          decoration: InputDecoration(
-                            hintText: "input message",
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            contentPadding: const EdgeInsets.all(12),
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.send),
-                        onPressed: _sendMessage,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+              
+   
             );
           }
 

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 class WebsocetService {
@@ -61,6 +62,34 @@ class WebsocetService {
       print("Error to connecting to WS ");
       rethrow;
     }
+  }
+  
+  void sendOffer(RTCSessionDescription offer) {
+    final message = {
+      'type': 'offer',
+      'data': offer.sdp,
+    };
+    send(message);
+  }
+
+  void sendAnswer(RTCSessionDescription answer) {
+    final message = {
+      'type': 'answer',
+      'data': answer.sdp,
+    };
+    send(message);
+  }
+  
+  void sendIceCandidate(RTCIceCandidate candidate) {
+    final message = {
+      'type': 'ice_candidate',
+      'data': {
+        'candidate': candidate.candidate,
+        'sdpMLineIndex': candidate.sdpMLineIndex,
+        'sdpMid': candidate.sdpMid,
+      }
+    };
+    send(message);
   }
 
   void disconnect() {

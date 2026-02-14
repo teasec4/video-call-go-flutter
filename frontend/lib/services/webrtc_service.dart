@@ -1,17 +1,18 @@
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:frontend/services/websocet_service.dart';
 import 'media_service.dart';
-import 'signaling_service.dart';
+
 
 class WebRtcService {
   final MediaService mediaService;
-  final SignalingService signalingService;
+  final WebsocetService webSocketService;
 
   RTCVideoRenderer? _remoteRenderer;
   bool _isCaller = false;
 
   WebRtcService({
     required this.mediaService,
-    required this.signalingService,
+    required this.webSocketService,
   });
 
   Future<void> initialize() async {
@@ -20,7 +21,7 @@ class WebRtcService {
     await mediaService.initializePeerConnection();
 
     mediaService.peerConnection.onIceCandidate = (candidate) {
-      signalingService.sendIceCandidate(candidate);
+      webSocketService.sendIceCandidate(candidate);
     };
 
     mediaService.peerConnection.onTrack = (RTCTrackEvent event) {
@@ -36,7 +37,7 @@ class WebRtcService {
     try {
       final offer = await mediaService.peerConnection.createOffer();
       await mediaService.peerConnection.setLocalDescription(offer);
-      signalingService.sendOffer(offer);
+      webSocketService.sendOffer(offer);
     } catch (e) {
       print('Error creating offer: $e');
       rethrow;
@@ -50,7 +51,7 @@ class WebRtcService {
 
       final answer = await mediaService.peerConnection.createAnswer();
       await mediaService.peerConnection.setLocalDescription(answer);
-      signalingService.sendAnswer(answer);
+      webSocketService.sendAnswer(answer);
     } catch (e) {
       print('Error handling offer: $e');
       rethrow;
@@ -80,6 +81,6 @@ class WebRtcService {
   void dispose() {
     _remoteRenderer?.dispose();
     mediaService.dispose();
-    signalingService.disconnect();
+    webSocketService.disconnect();
   }
 }

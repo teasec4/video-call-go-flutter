@@ -14,16 +14,21 @@ class WebsocetService {
     Function(Map<String, dynamic>) onMessage,
   ) async {
     try {
+      print('🔌 Connecting to WebSocket: $url');
       _channel = WebSocketChannel.connect(Uri.parse(url));
       _onMessage = onMessage;
       
       // Ждём, пока соединение установится
+      print('⏳ Waiting for connection...');
       await _channel.ready;
       _isConnected = true;
+      print('✅ WebSocket connected');
+      print('📤 Sending handshake: $handShakeMessage');
       send(handShakeMessage);
 
       _channel.stream.listen(
         (message) {
+          print('📨 WebSocket received: $message');
           try {
             late Map<String, dynamic> data;
 
@@ -38,6 +43,7 @@ class WebsocetService {
               return;
             }
 
+            print('📦 Parsed data: $data');
             _onMessage(data);
           } catch (e) {
             print("Error parsing data: $e");

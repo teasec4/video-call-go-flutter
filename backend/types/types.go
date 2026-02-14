@@ -7,14 +7,12 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-
-
-
 type Client struct {
 	Conn   *websocket.Conn
 	Id     string
 }
 
+// Message type for EVERYTHING throw WS
 type MessageType string
 
 const (

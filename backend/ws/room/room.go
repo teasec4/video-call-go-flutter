@@ -41,14 +41,14 @@ func (rm *RoomManager) BroadcastToRoom(roomId string, msg []byte) {
 
 	// Get snapshot of clients while holding lock
 	room.mu.RLock()
-	clients := make([]*types.Client, 0, len(room.Clients))
+	currentRoomClients := make([]*types.Client, 0, len(room.Clients))
 	for _, c := range room.Clients {
-		clients = append(clients, c)
+		currentRoomClients = append(currentRoomClients, c)
 	}
 	room.mu.RUnlock()
 
 	// Send messages without holding lock to prevent deadlocks
-	for _, c := range clients {
+	for _, c := range currentRoomClients {
 		if err := c.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 			log.Println("Write error for client", c.Id, ":", err)
 			c.Conn.Close()
@@ -96,12 +96,11 @@ func (rm *RoomManager) JoinRoom(roomID string, c *types.Client) error {
 // LeaveRoom removes a client from the room and deletes the room if empty.
 func (rm *RoomManager) LeaveRoom(roomID string, c *types.Client) {
 	rm.mu.Lock()
-	room, exists := rm.Rooms[roomID]
-	rm.mu.Unlock()
-
-	if !exists {
-		return
+	room, error := rm.GetRoom(roomID)
+	if error != nil{
+		return 
 	}
+	rm.mu.Unlock()
 
 	room.mu.Lock()
 	delete(room.Clients, c.Id)
@@ -118,19 +117,23 @@ func (rm *RoomManager) LeaveRoom(roomID string, c *types.Client) {
 }
 
 // GetRoom returns a room by ID. Returns nil if not found.
-func (rm *RoomManager) GetRoom(roomID string) *Room {
+func (rm *RoomManager) GetRoom(roomID string) (*Room, error){
 	rm.mu.RLock()
 	defer rm.mu.RUnlock()
-	return rm.Rooms[roomID]
+	room, exists := rm.Rooms[roomID]
+	if !exists {
+		return nil, fmt.Errorf("Room does not exist")
+	}
+	return room, nil
 }
 
 // GetClientInRoom находит клиента в комнате по ID
 func (rm *RoomManager) GetClientInRoom(roomID, clientID string) *types.Client {
     rm.mu.RLock()
-    room, exists := rm.Rooms[roomID]
+    room, err := rm.GetRoom(roomID)
     rm.mu.RUnlock()
     
-    if !exists {
+    if err != nil {
         return nil
     }
     

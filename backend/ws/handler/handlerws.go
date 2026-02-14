@@ -122,7 +122,9 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 		Type:   types.TypeJoined,
 		RoomID: roomId,
 	}
-	if err := conn.WriteMessage(websocket.TextMessage, mustJSON(joined)); err != nil {
+	joinedBytes := mustJSON(joined)
+	log.Printf("📤 Sending joined message: %s", string(joinedBytes))
+	if err := conn.WriteMessage(websocket.TextMessage, joinedBytes); err != nil {
 		log.Printf("write_error client_id=%s error=%v", clientId, err)
 		conn.Close()
 		return

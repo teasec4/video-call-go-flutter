@@ -25,7 +25,7 @@ class RoomManager {
   /// Создаёт новую комнату через HTTP и подключается к WebSocket
   Future<String> createAndJoinRoom() async {
     try {
-      print('Creating room at: $url/createroom');
+      print('Creating room at: $url/room');
 
       final response = await http.post(
         Uri.parse('$url/createroom'),
@@ -37,7 +37,7 @@ class RoomManager {
         final data = jsonDecode(response.body);
         _currentRoomId = data['roomId'];
         print('✅ Room created: $_currentRoomId');
-        
+
         // Сразу подключаемся к WebSocket
         await connectToWs();
         return _currentRoomId;
@@ -56,7 +56,7 @@ class RoomManager {
       print('Joining room at: $url/joinroom');
 
       final response = await http.post(
-        Uri.parse('$url/joinroom'),
+        Uri.parse('$url/room'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'roomId': roomId, 'clientId': userId}),
       );
@@ -64,7 +64,7 @@ class RoomManager {
       if (response.statusCode == 200 || response.statusCode == 201) {
         _currentRoomId = roomId;
         print('✅ Room joined: $_currentRoomId');
-        
+
         // Сразу подключаемся к WebSocket
         await connectToWs();
       } else {
@@ -84,20 +84,20 @@ class RoomManager {
         throw Exception('Room ID is not set');
       }
 
-      final joinMessage = JoinRoomMessage(
-        clientId: userId,
-        roomId: roomId,
-      );
+      final joinMessage = JoinRoomMessage(clientId: userId, roomId: roomId);
 
       await websocetService.connect(wsUrl, joinMessage.toJson(), (data) {
-        print('Received from WS: $data');
+        print('✅ Callback called with: $data');
         try {
           final message = decodeMessage(data);
+          print('✅ Message decoded: $message');
           if (onMessageReceived != null) {
             onMessageReceived!(message);
+            print('✅ onMessageReceived called');
           }
         } catch (e) {
-          print('Error decoding message: $e');
+          print('❌ Error decoding message: $e');
+          rethrow;
         }
       });
 
@@ -111,10 +111,7 @@ class RoomManager {
   /// Отправляет чат-сообщение в комнату
   void sendChatMessage(String payload) {
     try {
-      final message = ChatMessage(
-        from: userId,
-        payload: payload,
-      );
+      final message = ChatMessage(from: userId, payload: payload);
       websocetService.send(message.toJson());
     } catch (e) {
       print('Error sending chat message: $e');

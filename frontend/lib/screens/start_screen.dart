@@ -27,7 +27,7 @@ class _StartScreenState extends State<StartScreen> {
   Future<void> _onStartCallPressed() async {
     print('BUTTON PRESSED');
 
-    final roomId = await getIt<RoomManager>().createRoom();
+    final roomId = await getIt<RoomManager>().createAndJoinRoom();
     print(roomId);
     // Переходи на CallScreen
     Navigator.pushNamed(context, '/call', arguments: roomId);
@@ -37,14 +37,20 @@ class _StartScreenState extends State<StartScreen> {
     print("JOIN BUTTON PRESSED");
     final roomId = _textEditingRoomId.text;
     if (roomId.isNotEmpty) {
-      await getIt<RoomManager>().joinRoom(roomId);
-      print("Joined to Room - SUCCESS");
-      _textEditingRoomId.clear();
-      
-      // await getIt<RoomManager>().connectToWs();
-      
-      Navigator.pushNamed(context, '/call', arguments: roomId);
-      
+      try {
+        await getIt<RoomManager>().joinExistingRoom(roomId);
+        print("Joined to Room - SUCCESS");
+        _textEditingRoomId.clear();
+        
+        // await getIt<RoomManager>().connectToWs();
+        
+        Navigator.pushNamed(context, '/call', arguments: roomId);
+      } catch (e) {
+        print("❌ ERROR joining room: $e");
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error joining room: $e')),
+        );
+      }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter room ID')),

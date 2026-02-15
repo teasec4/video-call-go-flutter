@@ -16,9 +16,7 @@ class WebRtcService {
   });
 
   Future<void> initialize() async {
-
-    await mediaService.initialize();
-    await mediaService.initializePeerConnection();
+    // await mediaService.initializePeerConnection();
 
     mediaService.peerConnection.onIceCandidate = (candidate) {
       webSocketService.sendIceCandidate(candidate);

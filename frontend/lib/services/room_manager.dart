@@ -1,14 +1,19 @@
 import 'dart:convert';
 import 'package:frontend/models/decode_message.dart';
 import 'package:frontend/models/message.dart';
+import 'package:frontend/services/signaling_service.dart';
 import 'package:frontend/services/websocet_service.dart';
+import 'package:frontend/services/webrtc_service_new.dart';
 import 'package:http/http.dart' as http;
 
+/// Управляет созданием/присоединением к комнате и координирует WebRTC + WebSocket
 class RoomManager {
   final String url;
   final String wsUrl;
   final String userId;
   final WebsocetService websocetService;
+  final WebRTCService webrtcService;
+  late final SignalingService signalingService;
 
   List<BaseMessage> messages = [];
   Function(BaseMessage)? onMessageReceived;
@@ -18,9 +23,16 @@ class RoomManager {
     required this.wsUrl,
     required this.userId,
     required this.websocetService,
-  });
+    required this.webrtcService,
+  }) {
+    signalingService = SignalingService(
+      websocetService: websocetService,
+      webrtcService: webrtcService,
+    );
+  }
 
   late String _currentRoomId;
+  bool _isInitialized = false;
 
   /// Создаёт новую комнату через HTTP и подключается к WebSocket
   Future<String> createAndJoinRoom() async {
@@ -79,7 +91,7 @@ class RoomManager {
     }
   }
 
-  /// Подключается к WebSocket и регистрирует обработчики сообщений
+  /// Подключается к WebSocket, инициализирует WebRTC и регистрирует обработчики
   Future<void> connectToWs() async {
     try {
       final roomId = _currentRoomId;
@@ -87,9 +99,14 @@ class RoomManager {
         throw Exception('Room ID is not set');
       }
 
-      final joinMessage = JoinRoomMessage(clientId: userId, roomId: roomId);
+      // 1️⃣ Инициализируем WebRTC сервис (без создания offer)
+      print('🎬 Initializing WebRTC...');
+      await webrtcService.initialize();
 
-      // Регистрируем обработчик для неизвестных сообщений (чат, служебные и т.д.)
+      // 2️⃣ Настраиваем WebRTC сигнализацию через WebSocket
+      signalingService.setupSignaling();
+
+      // 3️⃣ Регистрируем обработчик для чат-сообщений
       websocetService.onMessage((data) {
         print('📨 WebSocket message received: $data');
         try {
@@ -103,14 +120,26 @@ class RoomManager {
         }
       });
 
-      // Подключаемся и отправляем join message
+      // 4️⃣ Подключаемся к WebSocket и отправляем join message
+      final joinMessage = JoinRoomMessage(clientId: userId, roomId: roomId);
       await websocetService.connect(wsUrl, joinMessage.toJson());
 
-      print('✅ Connected to WebSocket');
+      _isInitialized = true;
+      print('✅ Room fully initialized with WebRTC + WebSocket');
     } catch (e) {
       print('❌ Error connecting to WebSocket: $e');
       rethrow;
     }
+  }
+
+  /// Инициирует исходящий звонок (создаёт и отправляет offer)
+  /// Вызывается только caller-ом после успешного подключения к комнате
+  Future<void> startCall() async {
+    if (!_isInitialized) {
+      throw Exception('RoomManager must be initialized before starting call');
+    }
+    print('📞 Starting outgoing call...');
+    await webrtcService.startAsCallerAsync();
   }
 
   /// Отправляет чат-сообщение в комнату
@@ -126,6 +155,9 @@ class RoomManager {
 
   /// Отключается от WebSocket и очищает ресурсы
   void disconnect() {
+    print('🔌 Disconnecting from room...');
+    webrtcService.dispose();
     websocetService.disconnect();
+    _isInitialized = false;
   }
 }

@@ -19,6 +19,7 @@ class WebRTCService {
   late RTCPeerConnection _peerConnection;
 
   bool _isInitialized = false;
+  bool _isCaller = false;
 
   bool get isInitialized => _isInitialized;
   MediaStream get localStream => _localStream;
@@ -115,6 +116,7 @@ class WebRTCService {
     if (!_isInitialized) {
       throw Exception('WebRTCService must be initialized before starting as caller');
     }
+    _isCaller = true;
     await _createAndSendOffer();
   }
 
@@ -176,8 +178,8 @@ class WebRTCService {
     }
   }
 
-  /// Очищает все ресурсы: останавливает треки, закрывает соединение
-  /// и рендереры
+  /// Очищает все ресурсы: останавливает треки, закрывает соединение и рендереры
+  /// NOTE: WebSocket управляется RoomManager-ом, не трогаем его отсюда
   void dispose() {
     if (!_isInitialized) return;
     
@@ -187,6 +189,6 @@ class WebRTCService {
     _peerConnection.close();
     _remoteRenderer.dispose();
     _localRenderer.dispose();
-    websocetService.disconnect();
+    _isInitialized = false;
   }
 }

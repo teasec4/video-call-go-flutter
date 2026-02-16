@@ -6,7 +6,7 @@ import 'package:frontend/bloc/room_event.dart';
 import 'package:frontend/bloc/room_state.dart';
 import 'package:frontend/di/service_locator.dart';
 import 'package:frontend/models/message.dart';
-import 'package:frontend/services/creat_room_service.dart';
+import 'package:frontend/services/room_manager.dart';
 import 'package:frontend/services/webrtc_service_new.dart';
 
 

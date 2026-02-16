@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/di/service_locator.dart';
-import 'package:frontend/services/creat_room_service.dart';
+import 'package:frontend/services/room_manager.dart';
 
 class StartScreen extends StatefulWidget {
   const StartScreen({Key? key}) : super(key: key);

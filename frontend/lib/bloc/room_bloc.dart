@@ -1,7 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:frontend/bloc/room_event.dart';
 import 'package:frontend/bloc/room_state.dart';
-import 'package:frontend/services/creat_room_service.dart';
+import 'package:frontend/services/room_manager.dart';
 
 class RoomBloc extends Bloc<RoomEvent, RoomState> {
   final RoomManager roomManager;

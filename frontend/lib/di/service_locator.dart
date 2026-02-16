@@ -1,4 +1,4 @@
-import 'package:frontend/services/creat_room_service.dart';
+import 'package:frontend/services/room_manager.dart';
 import 'package:frontend/services/webrtc_service_new.dart';
 
 import 'package:frontend/services/websocet_service.dart';
@@ -24,6 +24,7 @@ void setupServiceLocator() {
       wsUrl: "ws://localhost:8081/ws",
       userId: userId,
       websocetService: getIt<WebsocetService>(),
+      webrtcService: getIt<WebRTCService>(),
     ),
   );
   print("room manager inited and userId is $userId");

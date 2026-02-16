@@ -7,7 +7,8 @@ import 'package:frontend/bloc/room_state.dart';
 import 'package:frontend/di/service_locator.dart';
 import 'package:frontend/models/message.dart';
 import 'package:frontend/services/creat_room_service.dart';
-import 'package:frontend/services/media_service.dart';
+import 'package:frontend/services/webrtc_service_new.dart';
+
 
 class CallScreen extends StatefulWidget {
   final String roomId;
@@ -25,21 +26,11 @@ class _CallScreenState extends State<CallScreen> {
   bool _isChatExpanded = true;
   late RTCVideoRenderer _localRenderer;
 
-  Future<void> initLocalRenderer() async {
-    _localRenderer = RTCVideoRenderer();
-    await getIt<MediaService>().initialize();
-    await _localRenderer.initialize();
-
-    _localRenderer.srcObject = getIt<MediaService>().localStream;
-  }
-
+ 
   @override
   void initState() {
     super.initState();
     roomId = widget.roomId;
-
-    // init Local Stream and Render
-    initLocalRenderer();
 
     // chat controller
     _chatSendTextController = TextEditingController();
@@ -54,7 +45,7 @@ class _CallScreenState extends State<CallScreen> {
     _chatSendTextController.dispose();
     _roomBloc.close();
     _localRenderer.dispose();
-    getIt<MediaService>().dispose();
+    getIt<WebRTCService>().dispose();
     super.dispose();
   }
 

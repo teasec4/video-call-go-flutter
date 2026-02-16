@@ -75,14 +75,12 @@ class WebRTCService {
     _peerConnection = await createPeerConnection(config);
   }
 
-  /// Основная инициализация WebRTC сервиса
-  /// Устанавливает медиа-поток, подключает обработчики событий
-  Future<void> initialize({required bool isCaller}) async {
+  /// Инициализирует WebRTC: медиа, P2P соединение и обработчики
+  /// Эта функция только подготавливает к соединению, но не создаёт offer
+  Future<void> initialize() async {
     if (_isInitialized) return;
     
     try {
-      _isCaller = isCaller;
-      
       // Инициализируем медиа и рендереры
       await initLocalAndRemoteRenderer();
       await initPeerConnection();
@@ -105,16 +103,21 @@ class WebRTCService {
         }
       };
 
-      // Если мы инициатор, создаём и отправляем offer
-      if (_isCaller) {
-        await _createAndSendOffer();
-      }
-
       _isInitialized = true;
     } catch (e) {
       print('Error initializing WebRTC: $e');
       rethrow;
     }
+  }
+
+  /// Инициирует соединение как caller: создаёт и отправляет offer
+  /// Вызывается после initialize() тем, кто инициирует звонок
+  Future<void> startAsCallerAsync() async {
+    if (!_isInitialized) {
+      throw Exception('WebRTCService must be initialized before starting as caller');
+    }
+    _isCaller = true;
+    await _createAndSendOffer();
   }
 
   /// Создаёт offer (предложение о соединении) и отправляет через WebSocket

@@ -79,7 +79,7 @@ class RoomManager {
     }
   }
 
-  /// Подключается к WebSocket и отправляет первое сообщение join
+  /// Подключается к WebSocket и регистрирует обработчики сообщений
   Future<void> connectToWs() async {
     try {
       final roomId = _currentRoomId;
@@ -89,24 +89,26 @@ class RoomManager {
 
       final joinMessage = JoinRoomMessage(clientId: userId, roomId: roomId);
 
-      await websocetService.connect(wsUrl, joinMessage.toJson(), (data) {
-        print('✅ Callback called with: $data');
+      // Регистрируем обработчик для неизвестных сообщений (чат, служебные и т.д.)
+      websocetService.onMessage((data) {
+        print('📨 WebSocket message received: $data');
         try {
           final message = decodeMessage(data);
           print('✅ Message decoded: $message');
           if (onMessageReceived != null) {
             onMessageReceived!(message);
-            print('✅ onMessageReceived called');
           }
         } catch (e) {
           print('❌ Error decoding message: $e');
-          rethrow;
         }
       });
 
+      // Подключаемся и отправляем join message
+      await websocetService.connect(wsUrl, joinMessage.toJson());
+
       print('✅ Connected to WebSocket');
     } catch (e) {
-      print('Error connecting to WebSocket: $e');
+      print('❌ Error connecting to WebSocket: $e');
       rethrow;
     }
   }

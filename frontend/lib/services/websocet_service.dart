@@ -5,13 +5,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 /// Типы сообщений в протоколе
-enum MessageType {
-  handshake,
-  offer,
-  answer,
-  iceCandidate,
-  unknown,
-}
+enum MessageType { handshake, offer, answer, iceCandidate, unknown }
 
 /// Структурированное сообщение от сервера
 class WSMessage {
@@ -50,6 +44,8 @@ class WebsocetService {
   Function(RTCSessionDescription)? _onAnswer;
   Function(RTCIceCandidate)? _onIceCandidate;
   Function(Map<String, dynamic>)? _onMessage; // fallback
+
+  bool get isConnected => _isConnected;
 
   /// Подключается к WebSocket серверу и отправляет handshake
   Future<void> connect(
@@ -194,19 +190,13 @@ class WebsocetService {
 
   /// Отправляет offer
   void sendOffer(RTCSessionDescription offer) {
-    final message = {
-      'type': 'offer',
-      'data': offer.sdp,
-    };
+    final message = {'type': 'offer', 'data': offer.sdp};
     send(message);
   }
 
   /// Отправляет answer
   void sendAnswer(RTCSessionDescription answer) {
-    final message = {
-      'type': 'answer',
-      'data': answer.sdp,
-    };
+    final message = {'type': 'answer', 'data': answer.sdp};
     send(message);
   }
 
@@ -218,7 +208,7 @@ class WebsocetService {
         'candidate': candidate.candidate,
         'sdpMLineIndex': candidate.sdpMLineIndex,
         'sdpMid': candidate.sdpMid,
-      }
+      },
     };
     send(message);
   }
@@ -239,5 +229,4 @@ class WebsocetService {
     print('🔌 WebSocket disconnected');
   }
 
-  bool get isConnected => _isConnected;
 }

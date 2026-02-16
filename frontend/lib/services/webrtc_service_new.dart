@@ -19,7 +19,6 @@ class WebRTCService {
   late RTCPeerConnection _peerConnection;
 
   bool _isInitialized = false;
-  bool _isCaller = false;
 
   bool get isInitialized => _isInitialized;
   MediaStream get localStream => _localStream;
@@ -116,7 +115,6 @@ class WebRTCService {
     if (!_isInitialized) {
       throw Exception('WebRTCService must be initialized before starting as caller');
     }
-    _isCaller = true;
     await _createAndSendOffer();
   }
 

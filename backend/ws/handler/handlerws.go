@@ -43,8 +43,6 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 
 	// Don't set any timeouts - allow long-lived connections
 
-
-
 	// Read first message (join registration)
 	_, firstMsg, err := conn.ReadMessage()
 	if err != nil {
@@ -156,6 +154,30 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 			respBytes := mustJSON(response)
 			fmt.Printf("📤 Broadcasting to room %s: %s\n", roomId, string(respBytes))
 			h.RoomManager.BroadcastToRoom(roomId, respBytes)
+
+		case types.TypeOffer:
+			fmt.Printf("📬 Received offer from %s in room %s\n", clientId, roomId)
+			// Forward offer to other peer
+			msg.From = clientId
+			respBytes := mustJSON(msg)
+			h.RoomManager.BroadcastToRoom(roomId, respBytes)
+
+		case types.TypeAnswer:
+			fmt.Printf("📬 Received answer from %s in room %s\n", clientId, roomId)
+			// Forward answer to other peer
+			msg.From = clientId
+			respBytes := mustJSON(msg)
+			h.RoomManager.BroadcastToRoom(roomId, respBytes)
+
+		case types.TypeIceCandidate:
+			fmt.Printf("🧊 Received ICE candidate from %s in room %s\n", clientId, roomId)
+			// Forward ICE candidate to other peer
+			msg.From = clientId
+			respBytes := mustJSON(msg)
+			h.RoomManager.BroadcastToRoom(roomId, respBytes)
+
+		default:
+			log.Printf("unknown_message_type client_id=%s message_type=%s", clientId, msg.Type)
 		}
 	}
 }

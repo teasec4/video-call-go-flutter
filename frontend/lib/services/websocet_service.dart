@@ -161,7 +161,7 @@ class WebsocetService {
   void sendOffer(RTCSessionDescription offer) {
     final message = {
       'type': 'offer',
-      'data': offer.sdp,
+      'payload': offer.sdp,
     };
     send(message);
   }
@@ -170,7 +170,7 @@ class WebsocetService {
   void sendAnswer(RTCSessionDescription answer) {
     final message = {
       'type': 'answer',
-      'data': answer.sdp,
+      'payload': answer.sdp,
     };
     send(message);
   }
@@ -179,7 +179,7 @@ class WebsocetService {
   void sendIceCandidate(RTCIceCandidate candidate) {
     final message = {
       'type': 'ice_candidate',
-      'data': {
+      'payload': {
         'candidate': candidate.candidate,
         'sdpMLineIndex': candidate.sdpMLineIndex,
         'sdpMid': candidate.sdpMid,

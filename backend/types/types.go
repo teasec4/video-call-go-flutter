@@ -16,11 +16,14 @@ type Client struct {
 type MessageType string
 
 const (
-	TypeJoin      MessageType = "join"
-	TypeJoined    MessageType = "joined"
-	TypeError     MessageType = "error"
-	TypeChat      MessageType = "chat"
-	TypeUserLeft  MessageType = "user-left"
+	TypeJoin        MessageType = "join"
+	TypeJoined      MessageType = "joined"
+	TypeError       MessageType = "error"
+	TypeChat        MessageType = "chat"
+	TypeUserLeft    MessageType = "user-left"
+	TypeOffer       MessageType = "offer"
+	TypeAnswer      MessageType = "answer"
+	TypeIceCandidate MessageType = "ice_candidate"
 )
 
 // Единая структура сообщения для всех типов
@@ -47,7 +50,15 @@ func (m *Message) Validate() error {
 		if len(m.Payload) == 0 {
 			return fmt.Errorf("chat message requires payload")
 		}
-	case TypeJoined, TypeError:
+	case TypeOffer, TypeAnswer:
+		if len(m.Payload) == 0 {
+			return fmt.Errorf("%s requires payload (SDP)", m.Type)
+		}
+	case TypeIceCandidate:
+		if len(m.Payload) == 0 {
+			return fmt.Errorf("ice_candidate requires payload")
+		}
+	case TypeJoined, TypeError, TypeUserLeft:
 		// No additional validation needed
 	default:
 		return fmt.Errorf("unknown message type: %s", m.Type)

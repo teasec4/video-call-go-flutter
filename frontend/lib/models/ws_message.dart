@@ -19,7 +19,7 @@ class WSMessage {
     final type = _parseMessageType(typeStr);
     return WSMessage(
       type: type,
-      payload: json['data'] as Map<String, dynamic>? ?? {},
+      payload: json['payload'] as Map<String, dynamic>? ?? {},
     );
   }
 

@@ -1,5 +1,5 @@
 import 'package:frontend/services/websocet_service.dart';
-import 'package:frontend/services/webrtc_service_new.dart';
+import 'package:frontend/services/webrtc/webrtc_service.dart';
 
 /// Координирует WebRTC сигнализацию через WebSocket
 /// Подключает обработчики и управляет потоком SDP + ICE

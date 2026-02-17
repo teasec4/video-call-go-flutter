@@ -1,16 +1,15 @@
-import 'dart:convert';
 import 'package:frontend/models/decode_message.dart';
 import 'package:frontend/models/message.dart';
+import 'package:frontend/services/http_room_service.dart';
 import 'package:frontend/services/signaling_service.dart';
 import 'package:frontend/services/websocet_service.dart';
-import 'package:frontend/services/webrtc_service_new.dart';
-import 'package:http/http.dart' as http;
+import 'package:frontend/services/webrtc/webrtc_service.dart';
 
-/// Управляет созданием/присоединением к комнате и координирует WebRTC + WebSocket
+/// Управляет комнатой и координирует HTTP + WebSocket + WebRTC
 class RoomManager {
-  final String url;
   final String wsUrl;
   final String userId;
+  final HttpRoomService httpRoomService;
   final WebsocetService websocetService;
   final WebRTCService webrtcService;
   late final SignalingService signalingService;
@@ -19,9 +18,9 @@ class RoomManager {
   Function(BaseMessage)? onMessageReceived;
 
   RoomManager({
-    required this.url,
     required this.wsUrl,
     required this.userId,
+    required this.httpRoomService,
     required this.websocetService,
     required this.webrtcService,
   }) {
@@ -34,72 +33,40 @@ class RoomManager {
   late String _currentRoomId;
   bool _isInitialized = false;
 
-  /// Создаёт новую комнату через HTTP и подключается к WebSocket
+  /// Создаёт новую комнату и подключается к ней
   Future<String> createAndJoinRoom() async {
     try {
-      print('Creating room at: $url/room');
-
-      final response = await http.post(
-        Uri.parse('$url/createroom'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'clientId': userId}),
-      );
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final data = jsonDecode(response.body);
-        _currentRoomId = data['roomId'];
-        print('✅ Room created: $_currentRoomId');
-
-        // Сразу подключаемся к WebSocket
-        await connectToWs();
-        return _currentRoomId;
-      } else {
-        throw Exception('Failed to create room: ${response.statusCode}');
-      }
+      final roomId = await httpRoomService.createRoom(userId);
+      _currentRoomId = roomId;
+      await _setupConnection();
+      return roomId;
     } catch (e) {
-      print('Error creating room: $e');
+      print('❌ Error creating room: $e');
       rethrow;
     }
   }
 
-  /// Присоединяется к существующей комнате через HTTP и подключается к WebSocket
+  /// Присоединяется к существующей комнате
   Future<void> joinExistingRoom(String roomId) async {
     try {
-      print('Joining room at: $url/room');
-      print('DEBUG: roomId=$roomId, clientId=$userId');
-
-      final response = await http.post(
-        Uri.parse('$url/room'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'roomId': roomId, 'clientId': userId}),
-      );
-
-      print('DEBUG: Response status=${response.statusCode}, body=${response.body}');
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        _currentRoomId = roomId;
-        print('✅ Room joined: $_currentRoomId');
-
-        // Сразу подключаемся к WebSocket
-        await connectToWs();
-      } else {
-        throw Exception('Failed to join room: ${response.statusCode} - ${response.body}');
-      }
+      await httpRoomService.joinRoom(roomId, userId);
+      _currentRoomId = roomId;
+      await _setupConnection();
     } catch (e) {
-      print('Error joining room: $e');
+      print('❌ Error joining room: $e');
       rethrow;
     }
   }
 
-  /// Подключается к WebSocket, инициализирует WebRTC и регистрирует обработчики
-  Future<void> connectToWs() async {
+  /// Общая логика подключения к WebSocket и инициализации WebRTC
+  Future<void> _setupConnection() async {
     try {
       final roomId = _currentRoomId;
       if (roomId.isEmpty) {
         throw Exception('Room ID is not set');
       }
 
-      // 1️⃣ Инициализируем WebRTC сервис (без создания offer)
+      // 1️⃣ Инициализируем WebRTC сервис
       print('🎬 Initializing WebRTC...');
       await webrtcService.initialize();
 
@@ -120,19 +87,19 @@ class RoomManager {
         }
       });
 
-      // 4️⃣ Подключаемся к WebSocket и отправляем join message
+      // 4️⃣ Подключаемся к WebSocket
       final joinMessage = JoinRoomMessage(clientId: userId, roomId: roomId);
       await websocetService.connect(wsUrl, joinMessage.toJson());
 
       _isInitialized = true;
       print('✅ Room fully initialized with WebRTC + WebSocket');
     } catch (e) {
-      print('❌ Error connecting to WebSocket: $e');
+      print('❌ Error setting up connection: $e');
       rethrow;
     }
   }
 
-  /// Инициирует исходящий звонок (создаёт и отправляет offer)
+  /// Инициирует исходящий звонок
   /// Вызывается только caller-ом после успешного подключения к комнате
   Future<void> startCall() async {
     if (!_isInitialized) {
@@ -153,7 +120,7 @@ class RoomManager {
     }
   }
 
-  /// Отключается от WebSocket и очищает ресурсы
+  /// Отключается от комнаты и очищает ресурсы
   void disconnect() {
     print('🔌 Disconnecting from room...');
     webrtcService.dispose();

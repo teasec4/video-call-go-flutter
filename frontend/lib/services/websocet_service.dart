@@ -2,37 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:frontend/models/ws_message.dart' as ws;
 import 'package:web_socket_channel/web_socket_channel.dart';
-
-/// Типы сообщений в протоколе
-enum MessageType { handshake, offer, answer, iceCandidate, unknown }
-
-/// Структурированное сообщение от сервера
-class WSMessage {
-  final MessageType type;
-  final Map<String, dynamic> payload;
-
-  WSMessage({required this.type, required this.payload});
-
-  factory WSMessage.fromJson(Map<String, dynamic> json) {
-    final typeStr = json['type'] as String?;
-    final type = _parseMessageType(typeStr);
-    return WSMessage(
-      type: type,
-      payload: json['data'] as Map<String, dynamic>? ?? {},
-    );
-  }
-
-  static MessageType _parseMessageType(String? type) {
-    return switch (type) {
-      'handshake' => MessageType.handshake,
-      'offer' => MessageType.offer,
-      'answer' => MessageType.answer,
-      'ice_candidate' => MessageType.iceCandidate,
-      _ => MessageType.unknown,
-    };
-  }
-}
 
 /// Управляет WebSocket соединением для WebRTC сигнализации
 class WebsocetService {
@@ -44,8 +15,6 @@ class WebsocetService {
   Function(RTCSessionDescription)? _onAnswer;
   Function(RTCIceCandidate)? _onIceCandidate;
   Function(Map<String, dynamic>)? _onMessage; // fallback
-
-  bool get isConnected => _isConnected;
 
   /// Подключается к WebSocket серверу и отправляет handshake
   Future<void> connect(
@@ -93,19 +62,19 @@ class WebsocetService {
       }
 
       print('📦 Parsed data: $data');
-      final wsMessage = WSMessage.fromJson(data);
+      final wsMessage = ws.WSMessage.fromJson(data);
 
       // Маршрутизируем по типу сообщения
       switch (wsMessage.type) {
-        case MessageType.offer:
+        case ws.MessageType.offer:
           _handleOfferMessage(wsMessage.payload);
-        case MessageType.answer:
+        case ws.MessageType.answer:
           _handleAnswerMessage(wsMessage.payload);
-        case MessageType.iceCandidate:
+        case ws.MessageType.iceCandidate:
           _handleIceCandidateMessage(wsMessage.payload);
-        case MessageType.handshake:
+        case ws.MessageType.handshake:
           print('✅ Handshake confirmed');
-        case MessageType.unknown:
+        case ws.MessageType.unknown:
           _onMessage?.call(wsMessage.payload);
       }
     } catch (e) {
@@ -190,13 +159,19 @@ class WebsocetService {
 
   /// Отправляет offer
   void sendOffer(RTCSessionDescription offer) {
-    final message = {'type': 'offer', 'data': offer.sdp};
+    final message = {
+      'type': 'offer',
+      'data': offer.sdp,
+    };
     send(message);
   }
 
   /// Отправляет answer
   void sendAnswer(RTCSessionDescription answer) {
-    final message = {'type': 'answer', 'data': answer.sdp};
+    final message = {
+      'type': 'answer',
+      'data': answer.sdp,
+    };
     send(message);
   }
 
@@ -208,7 +183,7 @@ class WebsocetService {
         'candidate': candidate.candidate,
         'sdpMLineIndex': candidate.sdpMLineIndex,
         'sdpMid': candidate.sdpMid,
-      },
+      }
     };
     send(message);
   }
@@ -229,4 +204,5 @@ class WebsocetService {
     print('🔌 WebSocket disconnected');
   }
 
+  bool get isConnected => _isConnected;
 }

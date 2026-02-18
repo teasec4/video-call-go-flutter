@@ -31,14 +31,12 @@ func NewRoomManager() *RoomManager {
 // BroadcastToRoom sends a message to all clients in the room.
 // If a write fails, the connection is closed to prevent dead connections.
 func (rm *RoomManager) BroadcastToRoom(roomId string, msg []byte) {
-	rm.mu.RLock()
-	room, exists := rm.Rooms[roomId]
-	rm.mu.RUnlock()
-
-	if !exists {
+	room, err := rm.GetRoom(roomId)
+	if err != nil{
+		log.Println("Get room error for room", roomId, ":", err)
 		return
 	}
-
+	
 	// Get snapshot of clients while holding lock
 	room.mu.RLock()
 	currentRoomClients := make([]*types.Client, 0, len(room.Clients))
@@ -78,13 +76,10 @@ func (rm *RoomManager) CreateRoom() string {
 
 // JoinRoom adds a client to the room.
 func (rm *RoomManager) JoinRoom(roomID string, c *types.Client) error {
-	rm.mu.RLock()
-	room, exists := rm.Rooms[roomID]
-	rm.mu.RUnlock()
-
-	if !exists {
-		log.Printf("room_not_found room_id=%s", roomID)
-		return fmt.Errorf("room not found")
+	room, err := rm.GetRoom(roomID)
+	if err != nil{
+		log.Println("Get room error for room", roomID, ":", err)
+		return err
 	}
 
 	room.mu.Lock()
@@ -97,12 +92,10 @@ func (rm *RoomManager) JoinRoom(roomID string, c *types.Client) error {
 
 // LeaveRoom removes a client from the room and deletes the room if empty.
 func (rm *RoomManager) LeaveRoom(roomID string, c *types.Client) {
-	rm.mu.RLock()
-	room, exists := rm.Rooms[roomID]
-	rm.mu.RUnlock()
-
-	if !exists {
-		return
+	room, err := rm.GetRoom(roomID)
+	if err != nil{
+		log.Println("Get room error for room", roomID, ":", err)
+		return 
 	}
 
 	room.mu.Lock()
@@ -132,13 +125,11 @@ func (rm *RoomManager) GetRoom(roomID string) (*Room, error){
 
 // GetClientInRoom находит клиента в комнате по ID
 func (rm *RoomManager) GetClientInRoom(roomID, clientID string) *types.Client {
-    rm.mu.RLock()
-    room, err := rm.GetRoom(roomID)
-    rm.mu.RUnlock()
-    
-    if err != nil {
-        return nil
-    }
+	room, err := rm.GetRoom(roomID)
+	if err != nil{
+		log.Println("Get room error for room", roomID, ":", err)
+		return nil
+	}
     
     room.mu.RLock()
     defer room.mu.RUnlock()
@@ -158,11 +149,16 @@ func (rm *RoomManager) CloseAllConnection() {
 	// Close connections outside of lock to prevent deadlocks
 	for _, room := range rooms {
 		room.mu.RLock()
+		clients := make([]*types.Client, 0, len(room.Clients))
 		for _, client := range room.Clients {
+			clients = append(clients, client)
+			
+		}
+		room.mu.RUnlock()
+		for _, client := range clients{
 			client.Conn.Close()
 			log.Printf("connection_closed client_id=%s room_id=%s", client.Id, room.ID)
 		}
-		room.mu.RUnlock()
 	}
 }
 

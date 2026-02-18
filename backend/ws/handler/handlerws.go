@@ -41,8 +41,6 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 	
 	ctx := r.Context()
 
-	// Don't set any timeouts - allow long-lived connections
-
 	// Read first message (join registration)
 	_, firstMsg, err := conn.ReadMessage()
 	if err != nil {

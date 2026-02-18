@@ -27,10 +27,6 @@ func main() {
 	http.HandleFunc("/ws", h.HandleConnection)
 	http.HandleFunc("/room", rh.HandleRoom)
 	
-	// deprecated 
-	http.HandleFunc("/createroom", rh.CreateRoom)
-	http.HandleFunc("/joinroom", rh.JoinRoom)
-
 	// Apply CORS middleware
 	corsHandler := middleware.CorsMiddleware(http.DefaultServeMux)
 

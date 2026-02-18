@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"callserver/types"
 	"callserver/ws/room"
 	"encoding/json"
 	"fmt"
@@ -10,6 +9,30 @@ import (
 
 	"github.com/gorilla/websocket"
 )
+
+type WSMessageType string
+
+const (
+	typeJoinWs        WSMessageType = "join"
+	typeJoinedWs      WSMessageType = "joined"
+	typeError       WSMessageType = "error"
+	typeChat        WSMessageType = "chat"
+	typeUserLeft    WSMessageType = "user-left"
+	typeOffer       WSMessageType = "offer"
+	typeAnswer      WSMessageType = "answer"
+	typeIceCandidate WSMessageType = "ice_candidate"
+)
+
+type WSPayload struct{
+	From string `json:"from"`
+	To string `json:"to"`
+	Data map[string]string `json:"data"`
+}
+
+type WSMessage struct{
+	Type WSMessageType `json:"type"`
+	Payload WSPayload `json:"payload"`
+}
 
 type HandlerWebSocket struct {
 	Upgrader    websocket.Upgrader
@@ -27,8 +50,6 @@ func NewHandlerWS(rm *room.RoomManager) *HandlerWebSocket {
 	}
 }
 
-// No timeouts for WebSocket connections - allow long-lived connections
-
 func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Request) {
 	log.Println("WebSocket request from:", r.RemoteAddr, "Host:", r.Header.Get("Host"))
 
@@ -41,66 +62,66 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 	
 	ctx := r.Context()
 
-	// Read first message (join registration)
+	// Read first message 
 	_, firstMsg, err := conn.ReadMessage()
 	if err != nil {
 		log.Println("Failed to read first message:", err)
 		return
 	}
 
-	var join types.Message
+	var join WSMessage
 	if err := json.Unmarshal(firstMsg, &join); err != nil {
-		log.Println("Failed to unmarshal registration:", err)
+		log.Println("Failed to unmarshal message(first):", err)
 		return
 	}
-	if join.Type != types.TypeJoin {
-		sendError(conn, "First message must be join")
-		return
-	}
-
-	if err := join.Validate(); err != nil {
-		log.Println("Validation error:", err)
-		sendError(conn, err.Error())
-		return
-	}
-
-	clientId := join.ClientID
-	roomId := join.RoomID
-
-	// Validate clientId format
-	if err := validateClientId(clientId); err != nil {
-		errMsg := fmt.Sprintf("invalid clientId: %v", err)
-		log.Printf("validation_error client_id=%s error=%v", clientId, err)
-		sendError(conn, errMsg)
-		return
-	}
-
-	// Validate roomId format
-	if err := validateRoomId(roomId); err != nil {
-		errMsg := fmt.Sprintf("invalid roomId: %v", err)
-		log.Printf("validation_error room_id=%s error=%v", roomId, err)
-		sendError(conn, errMsg)
-		return
-	}
-
-	client := &types.Client{
-		Id:   clientId,
-		Conn: conn,
-	}
-	h.RoomManager.JoinRoom(roomId, client)
-	log.Printf("client_joined client_id=%s room_id=%s remote_addr=%s", clientId, roomId, r.RemoteAddr)
-
-	// Send joined confirmation
-	joined := types.Message{
-		Type:   types.TypeJoined,
-		RoomID: roomId,
-	}
-	joinedBytes := mustJSON(joined)
-	log.Printf("📤 Sending joined message: %s", string(joinedBytes))
 	
-	if err := conn.WriteMessage(websocket.TextMessage, joinedBytes); err != nil {
-		log.Printf("write_error client_id=%s error=%v", clientId, err)
-		conn.Close()
+	clientId := join.Payload.From
+	roomId, ok := join.Payload.Data["roomId"]
+	if !ok || roomId == "" {
+	    sendError(conn, "empty data")
+	    return
+	}
+	
+	// attach client with server room manager 
+	err = h.RoomManager.AttachClient(roomId, clientId, conn)
+	if err != nil {
+	    sendError(conn, err.Error())
+	    return
+	}
+	
+	switch join.Type{
+		case typeJoinWs:
+			joined := WSMessage{
+				Type: typeJoinedWs,
+				Payload: WSPayload{
+					From: "server",
+					To: join.Payload.From,
+					Data: map[string]string{
+						"type" : "joined",
+					},
+				},
+			}
+			joinedBytes := mustJSON(joined)
+			log.Printf("Sending joined message: %s", string(joinedBytes))
+			
+			if err := conn.WriteMessage(websocket.TextMessage, joinedBytes); err != nil {
+				log.Printf("write_error client_id=%s error=%v", join.Payload.From, err)
+				conn.Close()
+				return
+			}
+		default:
+			sendError(conn, "First message must be join")
+			return
+	}
+	
+	
+	
+	
+	// get client and room 
+	room, err := h.RoomManager.GetRoom(roomId)
+	if err != nil{
+		log.Printf("GetRoom error: %v", err)
+		sendError(conn, "room not found")
 		return
 	}
 	
@@ -109,7 +130,7 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 		select {
 		case <-ctx.Done():
 			log.Printf("client_disconnected (shutdown) client_id=%s room_id=%s", clientId, roomId)
-			h.RoomManager.LeaveRoom(roomId, client)
+			// h.RoomManager.LeaveRoom(roomId, client)
 			return
 		default:
 		}
@@ -118,61 +139,36 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 		if err != nil {
 			log.Printf("client_disconnected client_id=%s room_id=%s error=%v", clientId, roomId, err)
 			// Broadcast user-left message BEFORE removing the client from the room
-			leftMsg := types.Message{
-				Type: types.TypeUserLeft,
-				From: clientId,
-			}
-			h.RoomManager.BroadcastToRoom(roomId, mustJSON(leftMsg))
-			h.RoomManager.LeaveRoom(roomId, client)
+			sendError(conn, "problem read message")
 			break
 		}
 
-		var msg types.Message
+		var msg WSMessage
 		if err := json.Unmarshal(msgBytes, &msg); err != nil {
 			log.Printf("unmarshal_error client_id=%s error=%v", clientId, err)
 			continue
 		}
 
-		msg.From = clientId
-
-		if err := msg.Validate(); err != nil {
-			log.Printf("validation_error client_id=%s message_type=%s error=%v", clientId, msg.Type, err)
-			continue
-		}
-
 		switch msg.Type {
-		case types.TypeChat:
-			fmt.Printf("📨 Received chat from %s: %s\n", clientId, string(msg.Payload))
+		case typeChat:
+			fmt.Printf("📨 Received chat from %s: %s\n", clientId, string(msg.Payload.From))
 			// Echo back with from field
-			response := types.Message{
-				Type:    types.TypeChat,
-				From:    clientId,
-				Payload: msg.Payload,
+			fmt.Printf("📤 Broadcasting to room %s: %s\n", roomId, string(msg.Payload.Data["msg"]))
+			if room != nil {
+				room.BroadcastToRoom(mustJSON(msg))
 			}
-			respBytes := mustJSON(response)
-			fmt.Printf("📤 Broadcasting to room %s: %s\n", roomId, string(respBytes))
-			h.RoomManager.BroadcastToRoom(roomId, respBytes)
 
-		case types.TypeOffer:
+		case typeOffer:
 			fmt.Printf("📬 Received offer from %s in room %s\n", clientId, roomId)
-			// Forward offer to other peer
-			msg.From = clientId
-			respBytes := mustJSON(msg)
-			h.RoomManager.BroadcastToRoom(roomId, respBytes)
+			
 
-		case types.TypeAnswer:
+		case typeAnswer:
 			fmt.Printf("📬 Received answer from %s in room %s\n", clientId, roomId)
-			// Forward answer to other peer
-			msg.From = clientId
-			respBytes := mustJSON(msg)
-			h.RoomManager.BroadcastToRoom(roomId, respBytes)
+			
 
-		case types.TypeIceCandidate:
+		case typeIceCandidate:
 			fmt.Printf("🧊 Received ICE candidate from %s in room %s\n", clientId, roomId)
-			// Forward ICE candidate to other peer
-			msg.From = clientId
-			respBytes := mustJSON(msg)
-			h.RoomManager.BroadcastToRoom(roomId, respBytes)
+			
 
 		default:
 			log.Printf("unknown_message_type client_id=%s message_type=%s", clientId, msg.Type)
@@ -181,11 +177,17 @@ func (h *HandlerWebSocket) HandleConnection(w http.ResponseWriter, r *http.Reque
 }
 
 func sendError(conn *websocket.Conn, errMsg string) {
-	msg := types.Message{
-		Type:    types.TypeError,
-		Payload: []byte(`"` + errMsg + `"`),
+	msg2 := WSMessage{
+		Type: typeError,
+		Payload: WSPayload{
+			From: "server",
+			To: "user", // payload.from
+			Data: map[string]string{
+				"error" : errMsg,
+			},
+		},
 	}
-	if err := conn.WriteMessage(websocket.TextMessage, mustJSON(msg)); err != nil {
+	if err := conn.WriteMessage(websocket.TextMessage, mustJSON(msg2)); err != nil {
 		log.Println("Failed to send error message:", err)
 		conn.Close()
 	}
@@ -198,5 +200,3 @@ func mustJSON(v any) []byte {
 	}
 	return data
 }
-
-

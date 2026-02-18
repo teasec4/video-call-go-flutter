@@ -12,11 +12,11 @@ type ReqType string
 type ResType string
 
 const (
-	TypeCreate ReqType = "create"
-	TypeJoin ReqType = "join"
+	typeCreate ReqType = "create"
+	typeJoin ReqType = "join"
 	
-	TypeCreated ResType = "created"
-	TypeJoined ResType = "joined"
+	typeCreated ResType = "created"
+	typeJoined ResType = "joined"
 )
 
 type reqData struct{
@@ -36,7 +36,7 @@ type reqToRoomManager struct{
 
 type resFromRoomManager struct{
 	Type ResType `json:"type"`
-	Payload resData
+	Payload resData `json:"payload"`
 }
 
 type RoomHandler struct{
@@ -60,6 +60,11 @@ func (rh *RoomHandler) HandleRoom(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "request body is required", http.StatusBadRequest)
 		return
 	}
+	// check POST method
+	if r.Method != http.MethodPost {
+	    http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	    return
+	}
 
 	// Check if roomId is present to route to the right handler
 	// We'll peek at the request to determine routing without consuming the body
@@ -76,10 +81,10 @@ func (rh *RoomHandler) HandleRoom(w http.ResponseWriter, r *http.Request) {
     return
 }
 	switch req.Type{
-		case TypeCreate:
+		case typeCreate:
 			rh.handleCreateRoomWithRequest(w, r, req.Payload)
 			
-		case TypeJoin:
+		case typeJoin:
 			rh.handleJoinRoomWithRequest(w, r, req.Payload)
 		
 		default:
@@ -90,13 +95,25 @@ func (rh *RoomHandler) HandleRoom(w http.ResponseWriter, r *http.Request) {
 }
 
 func (rh *RoomHandler) handleCreateRoomWithRequest(w http.ResponseWriter, r *http.Request, req reqData) {
-	roomId := rh.RM.CreateRoom()
+	if req.ClientId == "" {
+    http.Error(w, "clientId is required", http.StatusBadRequest)
+    return
+}
+	
+	roomId := rh.RM.CreateRoom(req.ClientId)
+	
+	// Add the client to the room
+	err := rh.RM.JoinRoom(roomId, req.ClientId)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("error joining room: %v", err), http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	
 	responseJson := resFromRoomManager{
-		Type: TypeCreated,
+		Type: typeCreated,
 		Payload: resData{
 			RoomId: roomId,
 		},
@@ -105,6 +122,10 @@ func (rh *RoomHandler) handleCreateRoomWithRequest(w http.ResponseWriter, r *htt
 }
 
 func (rh *RoomHandler) handleJoinRoomWithRequest(w http.ResponseWriter, r *http.Request, req reqData) {
+	if req.RoomId == "" {
+    http.Error(w, "roomId is required", http.StatusBadRequest)
+    return
+}
 	room, err := rh.RM.GetRoom(req.RoomId)
 	if err != nil {
 		fmt.Printf("❌ GetRoom error: %v\n", err)
@@ -115,22 +136,28 @@ func (rh *RoomHandler) handleJoinRoomWithRequest(w http.ResponseWriter, r *http.
 		http.Error(w, "room not found", http.StatusNotFound)
 		return
 	}
+	err = rh.RM.JoinRoom(req.RoomId, req.ClientId)
+	if err != nil{
+		http.Error(w, fmt.Sprintf("error creating room: %v", err), http.StatusBadRequest)
+		return
+	}
 	fmt.Printf("✅ JoinRoom success: clientId=%s, roomId=%s\n", req.ClientId, req.RoomId)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	
 	response := resFromRoomManager{
-		Type: TypeJoined,
+		Type: typeJoined,
 		Payload: resData{
 			RoomId: room.ID,
 		},
 	}
 	json.NewEncoder(w).Encode(response)
+	
 }
 
 func (t ReqType) IsValid()bool{
 	switch t{
-		case TypeCreate, TypeJoin:
+		case typeCreate, typeJoin:
 		return true
 		default:
 		return false

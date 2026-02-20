@@ -10,9 +10,10 @@ import (
 	"syscall"
 	"time"
 
-	"callserver/middleware"
-	"callserver/ws/handler"
-	"callserver/ws/room"
+	"callserver/internal/api"
+	"callserver/internal/handler"
+	"callserver/internal/repository"
+	"callserver/internal/service"
 )
 
 func main() {
@@ -20,24 +21,24 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 	
-	// room manager
-	rm := room.NewRoomManager()
+	// initialize repository layer
+	roomRepo := repository.NewInMemoryRoomRepository()
+	
+	// initialize service layer
+	roomService := service.NewRoomService(roomRepo)
 	
 	// ws handler
-	h := handler.NewHandlerWS(rm)
+	wh := handler.NewHandlerWS(roomService)
 	
 	// http handler
-	rh := handler.NewRoomHandler(rm)
+	rh := handler.NewRoomHandler(roomService)
 	
-	http.HandleFunc("/ws", h.HandleConnection)
-	http.HandleFunc("/room", rh.HandleRoom)
+	// router with middleware
+	router := api.NewRouter(wh, rh)
 	
-	// Apply CORS middleware
-	corsHandler := middleware.CorsMiddleware(http.DefaultServeMux)
-
 	server := &http.Server{
 		Addr:    "0.0.0.0:8081",
-		Handler: corsHandler,
+		Handler: router,
 	}
 
 	// Graceful shutdown
@@ -47,7 +48,7 @@ func main() {
 		<-sigChan
 
 		log.Println("Shutdown signal received, closing connections...")
-		rm.CloseAllConnection()
+		_ = roomRepo.CloseAllConnections()
 
 		log.Println("Shutting down HTTP server...")
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
